@@ -57,7 +57,6 @@ const findRemoteFolderByPath = (folderPath: string[], rootFolder: any) => {
 };
 
 const createRemoteFolderByPath = (folderPath: string[], rootFolder: any) => {
-  debug(`${folderPath},${rootFolder.id}`);
   if (folderPath.length === 0 || rootFolder === undefined) {
     return rootFolder === undefined || rootFolder.item_collection ? Promise.resolve(rootFolder) : client.folders.get(rootFolder.id);
   }
@@ -67,7 +66,6 @@ const createRemoteFolderByPath = (folderPath: string[], rootFolder: any) => {
     const entries: Array<any> = items.entries;
     const subFolder = _.first(entries.filter(entry => entry.type === 'folder' && entry.name === folderName));
     return new Promise((resolve, reject) => {
-      debug(`${subFolder},${rootFolder.id},${folderName}`);
       return subFolder ? resolve(subFolder) : client.folders.create(rootFolder.id, folderName).then(resolve);
     }).then((folder: any) => createRemoteFolderByPath(folderPath.slice(1), folder));
   });
@@ -92,31 +90,31 @@ client.folders.get(destination).then((rootFolder: any) => {
   ])
   .then(a => a.map(list => list.reduce((o: any, entry: { path:string }) => {
     const key = (path.isAbsolute(entry.path) ? path.relative(source, entry.path) : entry.path).normalize();
-    o[key] = entry;
+    o[key] = _.merge(entry, {path: key});
     return o;
   }, {})))
   .then(([local, remote]) => _.merge(local, remote))
   .then(map => _.values(map).forEach(e => {
     debug(e);
     if (!e.dirent) {
-      debug(`'${e.path}' only exists remotely.`);
+      console.log(`'${e.path}' only exists remotely.`);
     } else if (e.entry) {
       if (e.sha1 === e.entry.sha1) {
-        debug(`'${e.path}' is synchronized.`);
+        console.log(`'${e.path}' is synchronized.`);
       } else {
-        client.files.uploadNewFileVersion(e.entry.id, fs.createReadStream(e.path))
+        client.files.uploadNewFileVersion(e.entry.id, fs.createReadStream(path.join(source, e.path)))
           .then((file: any) => {
-            debug(`A new version of '${e.path}' has been uploaded.`);
+            console.log(`A new version of '${e.path}' has been uploaded.`);
           });
       }
     } else {
-      const { dir, base } = path.parse(e.path);
+      const { dir, base } = path.parse(path.relative(source, e.path));
       const dirs = dir === '' ? [] : dir.split(path.sep);
       findRemoteFolderByPath(dirs, rootFolder)
         .then((folder: any) => folder || createRemoteFolderByPath(dirs, rootFolder))
         .then((folder: any) => client.files.uploadFile(folder.id, base, fs.createReadStream(e.path)))
         .then((file: any) => {
-          debug(`'${e.path}' is newly uploaded.`);
+          console.log(`'${e.path}' is newly uploaded.`);
         })
     }
   }))
