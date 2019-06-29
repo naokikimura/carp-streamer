@@ -1,11 +1,66 @@
 #!/usr/bin/env node
 
+import BoxSDK from 'box-node-sdk';
 import _ from 'lodash';
 import minimist from 'minimist';
 import crypto from 'crypto';
 import fs from 'fs';
 import path, { resolve } from 'path';
 import util from 'util';
+
+enum ResultStatus {
+  DOWNLOADED,
+  SYNCHRONIZED,
+  UPLOADED,
+  UPGRADED
+}
+
+class File {
+
+  constructor(private root: string, readonly relativePath: string, private dirent: fs.Dirent, private remoteRoot: BoxSDK.Folder, private remoteFile: BoxSDK.File) {
+  }
+
+  get absolutePath() {
+    return path.resolve(this.root, this.relativePath);
+  }
+
+  synchronize() {
+    return new Promise<ResultStatus>((resolve, reject) => {
+      if (!this.dirent) {
+        resolve(ResultStatus.DOWNLOADED);
+      } else if (!this.remoteFile) {
+        const { dir, base } = path.parse(this.relativePath);
+        const dirs = dir === '' ? [] : dir.split(path.sep);
+        findRemoteFolderByPath(dirs, this.remoteRoot)
+          .then(folder => folder || createRemoteFolderByPath(dirs, this.remoteRoot))
+          .then(folder => client.files.uploadFile(folder.id, base, this.createReadStream()))
+          .then(() => resolve(ResultStatus.UPLOADED)).catch(reject);
+      } else {
+        this.digest().then(sha1 => {
+          if (sha1 === this.remoteFile.sha1) {
+            resolve(ResultStatus.SYNCHRONIZED);
+          } else {
+            client.files.uploadNewFileVersion(this.remoteFile.id, this.createReadStream())
+              .then(() => resolve(ResultStatus.UPGRADED)).catch(reject);
+          }
+        });
+      }
+    });
+  }
+
+  digest() {
+    return new Promise<string>((resolve, reject) => {
+      const hash = crypto.createHash('sha1');
+      const stream = this.createReadStream();
+      stream.on('data', chunk => hash.update(chunk));
+      stream.on('close', () => resolve(hash.digest('hex')));
+    });
+  }
+
+  private createReadStream() {
+    return fs.createReadStream(this.absolutePath)
+  }
+}
 
 const npmPackage = require('../package.json');
 const debug = util.debuglog(npmPackage.name);
@@ -36,86 +91,74 @@ const findLocalByPath = (source: string): Promise<any> => readdir(source, { with
       return entry.dirent.isDirectory() ? findLocalByPath(entry.path) : entry;
     }));
   });
-const findRemoteById = (id: string, folderPath: string = '') => client.folders.getItems(id).then((items: any) => {
-  return Promise.all(items.entries.map((entry: any) => {
-    const entryPath = path.join(folderPath, entry.name);
-    return entry.type === 'folder' ? findRemoteById(entry.id, entryPath) : { path: entryPath, entry };
+
+const findRemoteById = (id: string, folderPath: string = ''): Promise<any> => client.folders.getItems(id).then(items => {
+  return Promise.all(items.entries.map(item => {
+    const entryPath = path.join(folderPath, item.name);
+    return item.type === 'folder' ? findRemoteById(item.id, entryPath) : { path: entryPath, item };
   }));
 });
 
-const findRemoteFolderByPath = (folderPath: string[], rootFolder: any) => {
+const isFolder = (item: BoxSDK.MiniFolder): item is BoxSDK.Folder => (item as BoxSDK.Folder).size !== undefined;
+const isMiniFolder = (item: BoxSDK.Item): item is BoxSDK.MiniFolder => item.type === 'folder';
+
+const findRemoteFolderByPath = (folderPath: string[], rootFolder?: BoxSDK.MiniFolder): Promise<BoxSDK.Folder | undefined> => {
   if (folderPath.length === 0 || rootFolder === undefined) {
-    return rootFolder === undefined || rootFolder.item_collection ? Promise.resolve(rootFolder) : client.folders.get(rootFolder.id);
+    return rootFolder === undefined || isFolder(rootFolder) ? Promise.resolve(rootFolder) : client.folders.get(rootFolder.id);
   }
 
   const folderName = _.first(folderPath);
-  return client.folders.getItems(rootFolder.id).then((items: any) => {
-    const entries: Array<any> = items.entries;
-    const subFolder = _.first(entries.filter(entry => entry.type === 'folder' && entry.name === folderName));
+  return client.folders.getItems(rootFolder.id).then(items => {
+    const subFolder = _.first(items.entries.filter(isMiniFolder).filter(item => item.name === folderName));
     return findRemoteFolderByPath(folderPath.slice(1), subFolder);
   });
 };
 
-const createRemoteFolderByPath = (folderPath: string[], rootFolder: any) => {
-  if (folderPath.length === 0 || rootFolder === undefined) {
-    return rootFolder === undefined || rootFolder.item_collection ? Promise.resolve(rootFolder) : client.folders.get(rootFolder.id);
+const createRemoteFolderByPath = (folderPath: string[], rootFolder: BoxSDK.MiniFolder): Promise<BoxSDK.Folder> => {
+  if (folderPath.length === 0) {
+    return isFolder(rootFolder) ? Promise.resolve(rootFolder) : client.folders.get(rootFolder.id);
   }
 
-  const folderName = _.first(folderPath);
-  return client.folders.getItems(rootFolder.id).then((items: any) => {
-    const entries: Array<any> = items.entries;
-    const subFolder = _.first(entries.filter(entry => entry.type === 'folder' && entry.name === folderName));
-    return new Promise((resolve, reject) => {
+  const folderName = _.first(folderPath) || '';
+  return client.folders.getItems(rootFolder.id).then(items => {
+    const subFolder = _.first(items.entries.filter(isMiniFolder).filter(item => item.name === folderName));
+    return new Promise<BoxSDK.MiniFolder>((resolve, reject) => {
       return subFolder ? resolve(subFolder) : client.folders.create(rootFolder.id, folderName).then(resolve);
-    }).then((folder: any) => createRemoteFolderByPath(folderPath.slice(1), folder));
+    }).then(folder => createRemoteFolderByPath(folderPath.slice(1), folder));
   });
 };
 
-const digest = (source: string) => new Promise<string>((resolve, reject) => {
-  const hash = crypto.createHash('sha1');
-  const stream = fs.createReadStream(source);
-  stream.on('data', chunk => hash.update(chunk));
-  stream.on('close', () => resolve(hash.digest('hex')));
-});
-
-const BoxSDK = require('box-node-sdk');
 const client = BoxSDK.getBasicClient(args.t);
-client.folders.get(destination).then((rootFolder: any) => {
+client.folders.get(destination).then(rootFolder => {
   Promise.all([
-    findLocalByPath(source).then(_.flattenDeep)
-    .then(entries => Promise.all(entries.map((entry: any) => digest(entry.path).then(sha1 => {
-      return _.assign({sha1}, entry);
-    })))),
+    findLocalByPath(source).then(_.flattenDeep),
     findRemoteById(rootFolder.id).then(_.flattenDeep),
   ])
-  .then(a => a.map(list => list.reduce((o: any, entry: { path:string }) => {
+  .then(a => a.map(list => list.reduce((o: any, entry: any) => {
     const key = (path.isAbsolute(entry.path) ? path.relative(source, entry.path) : entry.path).normalize();
     o[key] = _.merge(entry, {path: key});
     return o;
   }, {})))
   .then(([local, remote]) => _.merge(local, remote))
-  .then(map => _.values(map).forEach(e => {
-    debug(e);
-    if (!e.dirent) {
-      console.log(`'${e.path}' only exists remotely.`);
-    } else if (e.entry) {
-      if (e.sha1 === e.entry.sha1) {
-        console.log(`'${e.path}' is synchronized.`);
-      } else {
-        client.files.uploadNewFileVersion(e.entry.id, fs.createReadStream(path.join(source, e.path)))
-          .then((file: any) => {
-            console.log(`A new version of '${e.path}' has been uploaded.`);
-          });
-      }
-    } else {
-      const { dir, base } = path.parse(path.relative(source, e.path));
-      const dirs = dir === '' ? [] : dir.split(path.sep);
-      findRemoteFolderByPath(dirs, rootFolder)
-        .then((folder: any) => folder || createRemoteFolderByPath(dirs, rootFolder))
-        .then((folder: any) => client.files.uploadFile(folder.id, base, fs.createReadStream(e.path)))
-        .then((file: any) => {
-          console.log(`'${e.path}' is newly uploaded.`);
-        })
+  .then(_.values)
+  .then(entries => entries.map(e => new File(source, e.path, e.dirent, rootFolder, e.item)))
+  .then(files => Promise.all(files.map(async file => {
+    debug('%o', file);
+    const status = await file.synchronize();
+    switch (status) {
+      case ResultStatus.DOWNLOADED:
+        console.log(`'${file.relativePath}' only exists remotely.`);
+        break;
+      case ResultStatus.SYNCHRONIZED:
+        console.log(`'${file.relativePath}' is synchronized.`);
+        break;
+      case ResultStatus.UPLOADED:
+        console.log(`'${file.relativePath}' is newly uploaded.`);
+        break;
+      case ResultStatus.UPGRADED:
+        console.log(`A new version of '${file.relativePath}' has been uploaded.`);
+        break;
     }
-  }))
+  })))
+  .then(() => console.log('successful!'))
 });
