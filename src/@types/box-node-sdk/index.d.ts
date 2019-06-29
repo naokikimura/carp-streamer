@@ -19,13 +19,18 @@ declare module 'box-node-sdk' {
     uploadNewFileVersion(fileId: string, stream: ReadStream): Promise<File>;
   }
 
-  export interface Item {
-    type: 'folder' | 'file';
+  export interface Object {
+    type: string;
     id: string;
+  }
+
+  export interface Item extends Object {
+    type: 'folder' | 'file';
+    name: string;
     sequence_id: string | null;
     etag: string | null;
-    name: string;
   }
+
   export interface Items {
     total_count: number;
     entries: Item[];
@@ -33,21 +38,25 @@ declare module 'box-node-sdk' {
     limit: number;
     order: Order[];
   }
+
   interface Order {
     by: string;
     direction: 'ASC' | 'DESC';
   }
+
   type DateTime = string
+
   interface PathCollection {
     total_count: number;
     entries: Item[];
   }
-  interface MiniUser {
+
+  interface MiniUser extends Object {
     type: 'user';
-    id: string;
     name: string;
     login: string;
   }
+
   export interface Folder extends MiniFolder {
     created_at: DateTime | null;
     modified_at: DateTime;
@@ -78,9 +87,11 @@ declare module 'box-node-sdk' {
     allowed_invitee_roles: string[];
     watermark_info: any;
   }
+
   type SyncState = 'synced' | 'not_synced' | 'partially_synced';
   type ItemStatus = 'active' | 'trashed' | 'deleted';
   type AccessLevel = 'open' | 'company' | 'collaborators';
+
   interface Permissions {
     can_download: boolean;
     can_upload?: boolean;
@@ -91,9 +102,11 @@ declare module 'box-node-sdk' {
     can_set_share_access?: boolean;
     readonly can_preview?: true;
   }
+
   export interface MiniFolder extends Item {
     type: 'folder'
   }
+
   export interface SharedLink {
     readonly url: string;
     readonly download_url: string;
@@ -107,8 +120,18 @@ declare module 'box-node-sdk' {
     readonly download_count: number;
     readonly preview_count: number;
   }
-  export interface File extends Item {
+
+  export interface MiniFile extends Item {
     type: 'file';
+    sha1: string;
+    file_version: MiniFileVersion;
+  }
+
+  export interface File extends MiniFile {
+  }
+
+  export interface MiniFileVersion extends Object {
+    type: 'file_version'
     sha1: string;
   }
 }
