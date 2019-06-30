@@ -30,7 +30,7 @@ export class File {
         resolve(ResultStatus.DOWNLOADED);
       } else if (!this.remoteFile) {
         Promise.resolve().then(async () => {
-          if (pretend) Promise.resolve();
+          if (pretend) return;
 
           const { dir, base } = path.parse(this.relativePath);
           try {
@@ -47,8 +47,8 @@ export class File {
           if (sha1 === this.remoteFile!.sha1) {
             resolve(ResultStatus.SYNCHRONIZED);
           } else {
-            Promise.resolve().then(() => {
-              if (pretend) Promise.resolve();
+            Promise.resolve().then(async () => {
+              if (pretend) return;
 
               debug('Upgrading `%s`...', this.relativePath);
               return client.files.uploadNewFileVersion(this.remoteFile!.id, this.createReadStream());
@@ -122,9 +122,9 @@ const readdir = util.promisify(fs.readdir);
 export async function* listDirectoryEntriesRecursively(root: string): AsyncIterableIterator<{path: string, dirent: fs.Dirent}> {
   for(let dirent of await readdir(root, { withFileTypes: true })) {
     const entryPath = path.join(root, dirent.name);
+    yield ({ path: entryPath, dirent });
     if (dirent.isDirectory()) {
       yield* listDirectoryEntriesRecursively(entryPath);
     }
-    yield ({ path: entryPath, dirent });
   }
 }
