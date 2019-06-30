@@ -3,6 +3,7 @@
 import BoxSDK from 'box-node-sdk';
 import _ from 'lodash';
 import minimist from 'minimist';
+import fs from 'fs';
 import path from 'path';
 import util from 'util';
 import {File, ResultStatus, list, findRemoteFileByPath, findRemoteFolderByPath} from './app'
@@ -12,7 +13,7 @@ const debug = util.debuglog(npmPackage.name);
 
 const argsOption = {
   'alias': { t: 'token', v: 'version' },
-  'string': ['t'],
+  'string': ['t', 'as-user'],
   'boolean': ['v', 'dry-run'],
   'default': { 'dry-run': false }
 };
@@ -26,8 +27,19 @@ if (args.version) {
 const [source, destination] = args._
 const pretend: boolean = args['dry-run'];
 
-const client = BoxSDK.getBasicClient(args.t);
-client.folders.get(destination).then(async function(rootFolder) {
+const appConfig = process.env.BOX_APP_CONFIG && JSON.parse(fs.readFileSync(process.env.BOX_APP_CONFIG).toString());
+const createBoxClient = (params: { appConfig?: object, token?: string }) => {
+  if (params.token) return BoxSDK.getBasicClient(params.token);
+
+  const sdk = BoxSDK.getPreconfiguredInstance(appConfig);
+  return sdk.getAppAuthClient('enterprise');
+}
+
+const client = createBoxClient({ appConfig, token: args.token });
+if (args['as-user']) {
+  client.asUser(args['as-user']);
+}
+client.folders.get(destination).then(async (rootFolder) => {
   const promises = [];
   for await (let { path: absolutePath, dirent } of list(source)) {
     const relativePath = path.relative(source, absolutePath);
