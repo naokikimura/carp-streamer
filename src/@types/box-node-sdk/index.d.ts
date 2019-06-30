@@ -1,9 +1,25 @@
 declare module 'box-node-sdk' {
   import { ReadStream } from 'fs';
 
-  export function getBasicClient(token: string): Client;
+  export function getBasicClient(token: string): BoxClient;
 
-  export interface Client {
+  export function getPreconfiguredInstance(appConfig: object): BoxSDKNode;
+
+  export interface BoxSDKNode {
+    getAppAuthClient(type: string, id?: string, tokenStore?: TokenStore): BoxClient;
+  }
+
+  export interface TokenStore {
+    read(callback: (err: Error | undefined, data: any) => void): void;
+    write(tokenInfo: TokenInfo, callback: (err: Error | undefined, data: any) => void): void;
+    clear(callback: (err: Error | undefined, data: any) => void): void;
+  }
+
+  export interface TokenInfo {}
+
+  export interface BoxClient {
+    asUser(userID: string): void;
+    asSelf(): void;
     readonly folders: Folders;
     readonly files: Files;
   }

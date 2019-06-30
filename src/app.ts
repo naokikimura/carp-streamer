@@ -23,7 +23,7 @@ export class File {
     return path.resolve(this.root, this.relativePath);
   }
 
-  synchronize(client: BoxSDK.Client, pretend: boolean = false) {
+  synchronize(client: BoxSDK.BoxClient, pretend: boolean = false) {
     return new Promise<ResultStatus>((resolve, reject) => {
       if (!this.dirent) {
         // client.files.getReadStream()
@@ -66,7 +66,7 @@ export class File {
 
 const isMiniFile = (item: BoxSDK.Item): item is BoxSDK.MiniFile => item.type === 'file';
 
-export async function findRemoteFileByPath(folderPath: string[], filename: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.Client): Promise<BoxSDK.File | undefined> {
+export async function findRemoteFileByPath(folderPath: string[], filename: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.File | undefined> {
   const folder = await findRemoteFolderByPath(folderPath, rootFolder, client);
   return folder && client.folders.getItems(folder.id).then(items => _.first(items.entries.filter(isMiniFile).filter(item => item.name.normalize() === filename.normalize())))
 }
@@ -74,7 +74,7 @@ export async function findRemoteFileByPath(folderPath: string[], filename: strin
 const isFolder = (item: BoxSDK.MiniFolder): item is BoxSDK.Folder => (item as BoxSDK.Folder).size !== undefined;
 const isMiniFolder = (item: BoxSDK.Item): item is BoxSDK.MiniFolder => item.type === 'folder';
 
-export async function findRemoteFolderByPath(folderPath: string[], rootFolder: BoxSDK.MiniFolder | undefined, client: BoxSDK.Client): Promise<BoxSDK.Folder | undefined> {
+export async function findRemoteFolderByPath(folderPath: string[], rootFolder: BoxSDK.MiniFolder | undefined, client: BoxSDK.BoxClient): Promise<BoxSDK.Folder | undefined> {
   if (folderPath.length === 0 || rootFolder === undefined) {
     return rootFolder === undefined || isFolder(rootFolder) ? Promise.resolve(rootFolder) : client.folders.get(rootFolder.id);
   }
@@ -85,7 +85,7 @@ export async function findRemoteFolderByPath(folderPath: string[], rootFolder: B
   return findRemoteFolderByPath(folderPath.slice(1), subFolder, client);
 };
 
-const createRemoteFolderByPath = async (folderPath: string[], rootFolder: BoxSDK.MiniFolder, client: BoxSDK.Client): Promise<BoxSDK.Folder> => {
+const createRemoteFolderByPath = async (folderPath: string[], rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.Folder> => {
   if (folderPath.length === 0) {
     return isFolder(rootFolder) ? Promise.resolve(rootFolder) : client.folders.get(rootFolder.id);
   }
