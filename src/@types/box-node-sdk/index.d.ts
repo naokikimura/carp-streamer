@@ -18,7 +18,7 @@ declare module 'box-node-sdk' {
   export interface TokenInfo {}
 
   export interface BoxClient {
-    asUser(userID: string): void;
+    asUser(userId: string): void;
     asSelf(): void;
     readonly folders: Folders;
     readonly files: Files;
