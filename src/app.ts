@@ -50,7 +50,7 @@ export class File {
     });
   }
 
-  digest() {
+  private digest() {
     return new Promise<string>((resolve, reject) => {
       const hash = crypto.createHash('sha1');
       const stream = this.createReadStream();
@@ -92,7 +92,7 @@ const createRemoteFolderByPath = async (folderPath: string[], rootFolder: BoxSDK
 
   const folderName = _.first(folderPath) || '';
   const items = await client.folders.getItems(rootFolder.id);
-  const subFolder = _.first(items.entries.filter(isMiniFolder).filter(item_2 => item_2.name === folderName));
+  const subFolder = _.first(items.entries.filter(isMiniFolder).filter(item => item.name === folderName));
   const folder = await new Promise<BoxSDK.MiniFolder>((resolve, reject) => {
     return subFolder ? resolve(subFolder) : client.folders.create(rootFolder.id, folderName).then(resolve);
   });
