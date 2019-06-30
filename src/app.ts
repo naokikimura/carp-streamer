@@ -29,21 +29,33 @@ export class File {
         // client.files.getReadStream()
         resolve(ResultStatus.DOWNLOADED);
       } else if (!this.remoteFile) {
-        const { dir, base } = path.parse(this.relativePath);
-        const dirs = dir === '' ? [] : dir.split(path.sep);
-        (pretend ? Promise.resolve({})
-          : findRemoteFolderByPath(dirs, this.remoteRoot, client)
-          .then(folder => folder || createRemoteFolderByPath(dirs, this.remoteRoot, client))
-          .then(folder => client.files.uploadFile(folder.id, base, this.createReadStream()))
-        ).then(() => resolve(ResultStatus.UPLOADED)).catch(reject);
+        Promise.resolve().then(async () => {
+          if (pretend) Promise.resolve();
+
+          const { dir, base } = path.parse(this.relativePath);
+          const dirs = dir === '' ? [] : dir.split(path.sep);
+          debug('Finding `%s`...', dir);
+          const foundFolder = await findRemoteFolderByPath(dirs, this.remoteRoot, client);
+          try {
+            const folder = foundFolder || await createRemoteFolderByPath(dirs, this.remoteRoot, client);
+            debug('Uploading `%s`...', this.relativePath);
+            return client.files.uploadFile(folder.id, base, this.createReadStream());
+          } catch (error) {
+            debug("Failed to create '%s' folder.", dir);
+            throw error;
+          }
+        }).then(() => resolve(ResultStatus.UPLOADED)).catch(reject);
       } else {
         this.digest().then(sha1 => {
           if (sha1 === this.remoteFile!.sha1) {
             resolve(ResultStatus.SYNCHRONIZED);
           } else {
-            (pretend ? Promise.resolve({})
-              : client.files.uploadNewFileVersion(this.remoteFile!.id, this.createReadStream())
-            ).then(() => resolve(ResultStatus.UPGRADED)).catch(reject);
+            Promise.resolve().then(() => {
+              if (pretend) Promise.resolve();
+
+              debug('Upgrading `%s`...', this.relativePath);
+              return client.files.uploadNewFileVersion(this.remoteFile!.id, this.createReadStream());
+            }).then(() => resolve(ResultStatus.UPGRADED)).catch(reject);
           }
         });
       }
@@ -99,9 +111,7 @@ const createRemoteFolderByPath = async (folderPath: string[], rootFolder: BoxSDK
   const folderName = _.first(folderPath) || '';
   const items = await client.folders.getItems(rootFolder.id);
   const subFolder = _.first(items.entries.filter(isMiniFolder).filter(item => item.name === folderName));
-  const folder = await new Promise<BoxSDK.MiniFolder>((resolve, reject) => {
-    return subFolder ? resolve(subFolder) : client.folders.create(rootFolder.id, folderName).then(resolve);
-  });
+  const folder = subFolder || await client.folders.create(rootFolder.id, folderName);
   return await createRemoteFolderByPath(folderPath.slice(1), folder, client);
 };
 
