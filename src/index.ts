@@ -6,7 +6,7 @@ import minimist from 'minimist';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
-import {File, ResultStatus, list, findRemoteFileByPath, findRemoteFolderByPath} from './app'
+import {File, ResultStatus, listDirectoryEntriesRecursively, findRemoteFileByPath} from './app'
 
 const npmPackage = require('../package.json');
 const debug = util.debuglog(npmPackage.name);
@@ -42,12 +42,10 @@ if (args['as-user']) {
 }
 client.folders.get(destination).then(async (rootFolder) => {
   const promises = [];
-  for await (let { path: absolutePath, dirent } of list(rootPath)) {
+  for await (let { path: absolutePath, dirent } of listDirectoryEntriesRecursively(rootPath)) {
     const relativePath = path.relative(rootPath, absolutePath);
     if (dirent.isDirectory()) continue;
-    const { dir, base } = path.parse(relativePath);
-    const dirs = dir === '' ? [] : dir.split(path.sep);
-    promises.push(findRemoteFileByPath(dirs, base, rootFolder, client).then(async (remoteFile) => {
+    promises.push(findRemoteFileByPath(relativePath, rootFolder, client).then(async (remoteFile) => {
       const file = new File(rootPath, relativePath, dirent, rootFolder, remoteFile)
       debug('%o', file);
       const status = await file.synchronize(client, pretend);
@@ -69,5 +67,6 @@ client.folders.get(destination).then(async (rootFolder) => {
       }
     }))
   }
+  console.log(`${promises.length} entries were found.`);
   return Promise.all(promises);
 }).then(() => console.log('successful!'));

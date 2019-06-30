@@ -66,7 +66,13 @@ export class File {
 
 const isMiniFile = (item: BoxSDK.Item): item is BoxSDK.MiniFile => item.type === 'file';
 
-export async function findRemoteFileByPath(folderPath: string[], filename: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.File | undefined> {
+export async function findRemoteFileByPath(relativePath: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.File | undefined> {
+  const { dir, base } = path.parse(relativePath);
+  const dirs = dir === '' ? [] : dir.split(path.sep);
+  return _findRemoteFileByPath(dirs, base, rootFolder, client);
+}
+
+async function _findRemoteFileByPath(folderPath: string[], filename: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.File | undefined> {
   const folder = await findRemoteFolderByPath(folderPath, rootFolder, client);
   return folder && client.folders.getItems(folder.id).then(items => _.first(items.entries.filter(isMiniFile).filter(item => item.name.normalize() === filename.normalize())))
 }
@@ -100,11 +106,11 @@ const createRemoteFolderByPath = async (folderPath: string[], rootFolder: BoxSDK
 };
 
 const readdir = util.promisify(fs.readdir);
-export async function* list(root: string): AsyncIterableIterator<{path: string, dirent: fs.Dirent}> {
+export async function* listDirectoryEntriesRecursively(root: string): AsyncIterableIterator<{path: string, dirent: fs.Dirent}> {
   for(let dirent of await readdir(root, { withFileTypes: true })) {
     const entryPath = path.join(root, dirent.name);
     if (dirent.isDirectory()) {
-      yield* list(entryPath);
+      yield* listDirectoryEntriesRecursively(entryPath);
     }
     yield ({ path: entryPath, dirent });
   }
