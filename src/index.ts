@@ -35,19 +35,20 @@ const createBoxClient = (params: { appConfig?: object, token?: string }) => {
   return sdk.getAppAuthClient('enterprise');
 }
 
+const rootPath = path.resolve(process.cwd(), source);
 const client = createBoxClient({ appConfig, token: args.token });
 if (args['as-user']) {
   client.asUser(args['as-user']);
 }
 client.folders.get(destination).then(async (rootFolder) => {
   const promises = [];
-  for await (let { path: absolutePath, dirent } of list(source)) {
-    const relativePath = path.relative(source, absolutePath);
+  for await (let { path: absolutePath, dirent } of list(rootPath)) {
+    const relativePath = path.relative(rootPath, absolutePath);
     if (dirent.isDirectory()) continue;
     const { dir, base } = path.parse(relativePath);
     const dirs = dir === '' ? [] : dir.split(path.sep);
     promises.push(findRemoteFileByPath(dirs, base, rootFolder, client).then(async (remoteFile) => {
-      const file = new File(source, relativePath, dirent, rootFolder, remoteFile)
+      const file = new File(rootPath, relativePath, dirent, rootFolder, remoteFile)
       debug('%o', file);
       const status = await file.synchronize(client, pretend);
       switch (status) {
