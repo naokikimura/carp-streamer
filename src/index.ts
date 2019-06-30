@@ -6,7 +6,7 @@ import minimist from 'minimist';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
-import {File, ResultStatus, listDirectoryEntriesRecursively, findRemoteFileByPath} from './app'
+import {File, ResultStatus, listDirectoryEntriesRecursively, findRemoteFileByPath, createRemoteFolderUnlessItExists} from './app'
 
 const npmPackage = require('../package.json');
 const debug = util.debuglog(`${npmPackage.name}:index`);
@@ -50,7 +50,10 @@ client.folders.get(destination).then(async (rootFolder) => {
   const promises = [];
   for await (let { path: absolutePath, dirent } of listDirectoryEntriesRecursively(rootPath)) {
     const relativePath = path.relative(rootPath, absolutePath);
-    if (dirent.isDirectory()) continue;
+    if (dirent.isDirectory()) {
+      if (!pretend) await createRemoteFolderUnlessItExists(relativePath, rootFolder, client);
+      continue;
+    }
     promises.push(findRemoteFileByPath(relativePath, rootFolder, client).then(async (remoteFile) => {
       debug('%o', { relativePath, dirent, remoteFile });
       const file = new File(rootPath, relativePath, dirent, rootFolder, remoteFile)
