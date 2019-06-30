@@ -25,6 +25,12 @@ if (args.version) {
 }
 
 const [source, destination] = args._
+
+if (source === undefined || destination === undefined) {
+  console.error(`usage: ${npmPackage.name} [options] source destination`);
+  process.exit(1);
+}
+
 const pretend: boolean = args['dry-run'];
 
 const appConfig = process.env.BOX_APP_CONFIG && JSON.parse(fs.readFileSync(process.env.BOX_APP_CONFIG).toString());
