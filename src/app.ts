@@ -78,12 +78,18 @@ const isMiniFile = (item: BoxSDK.Item): item is BoxSDK.MiniFile => item.type ===
 export async function findRemoteFileByPath(relativePath: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.File | undefined> {
   const { dir, base } = path.parse(relativePath);
   const dirs = dir === '' ? [] : dir.split(path.sep);
-  return _findRemoteFileByPath(dirs, base, rootFolder, client);
+  return await _findRemoteFileByPath(dirs, base, rootFolder, client);
 }
 
 async function _findRemoteFileByPath(folderPath: string[], filename: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.File | undefined> {
   const folder = await findRemoteFolderByPath(folderPath, rootFolder, client);
-  return folder && client.folders.getItems(folder.id).then(items => _.first(items.entries.filter(isMiniFile).filter(item => item.name.normalize() === filename.normalize())))
+  if (!folder) return folder;
+  const items = await client.folders.getItems(folder.id);
+  return _.first(
+    items.entries
+    .filter(isMiniFile)
+    .filter(item => item.name.normalize() === filename.normalize())
+  );
 }
 
 const isFolder = (item: BoxSDK.MiniFolder): item is BoxSDK.Folder => (item as BoxSDK.Folder).size !== undefined;
@@ -97,7 +103,7 @@ export async function findRemoteFolderByPath(folderPath: string[], rootFolder: B
   const folderName = _.first(folderPath);
   const items = await client.folders.getItems(rootFolder.id);
   const subFolder = _.first(items.entries.filter(isMiniFolder).filter(item_2 => item_2.name === folderName));
-  return findRemoteFolderByPath(folderPath.slice(1), subFolder, client);
+  return await findRemoteFolderByPath(folderPath.slice(1), subFolder, client);
 };
 
 const createRemoteFolderByPath = async (folderPath: string[], rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.Folder> => {
