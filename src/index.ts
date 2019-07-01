@@ -76,7 +76,8 @@ client.folders.get(destination).then(async (rootFolder) => {
             throw new Error('unknown result status');
         }
       } catch(error) {
-        debug('%s\n%s', error.message, error.stack);
+        debug('%s: %s', error.name, error.message);
+        debug('%s', error.stack);
         console.log(`Failed to synchronize '${file.relativePath}'.`);
         throw error;
       }
@@ -85,10 +86,11 @@ client.folders.get(destination).then(async (rootFolder) => {
   console.log(`${promises.length} entries were found.`);
   return Promise.all(promises);
 }).then(() => {
-  console.log('successful!');
+  console.log('Successful!');
   process.exit(0);
 }).catch(reason => {
-  console.log(reason.message);
-  console.log(`failure!`);
+  console.log('%s: %s', reason.name, reason.message);
+  debug('%s', reason.stack);
+  console.log(`Failure!`);
   process.exit(1);
 });
