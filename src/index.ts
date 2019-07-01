@@ -51,7 +51,14 @@ client.folders.get(destination).then(async (rootFolder) => {
   for await (let { path: absolutePath, dirent } of listDirectoryEntriesRecursively(rootPath)) {
     const relativePath = path.relative(rootPath, absolutePath);
     if (dirent.isDirectory()) {
-      if (!pretend) await createRemoteFolderUnlessItExists(relativePath, rootFolder, client);
+      try {
+        if (!pretend) await createRemoteFolderUnlessItExists(relativePath, rootFolder, client);
+      } catch (error) {
+        debug('%s: %s', error.name, error.message);
+        debug('%s', error.stack);
+        console.log(`Failed to synchronize '${relativePath}'.`);
+        throw error;
+      }
       continue;
     }
     promises.push(findRemoteFileByPath(relativePath, rootFolder, client).then(async (remoteFile) => {
