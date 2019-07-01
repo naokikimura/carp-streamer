@@ -114,9 +114,37 @@ const createRemoteFolderByPath = async (folderPath: string[], rootFolder: BoxSDK
   const folderName = _.first(folderPath) || '';
   const items = await client.folders.getItems(rootFolder.id);
   const subFolder = _.first(items.entries.filter(isMiniFolder).filter(item => item.name === folderName));
-  const folder = subFolder || await client.folders.create(rootFolder.id, folderName);
+  const folder = subFolder || await createRemoteFolder(client, rootFolder.id, folderName, 3);
   return await createRemoteFolderByPath(folderPath.slice(1), folder, client);
 };
+
+function sleep(delay: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, delay));
+}
+
+async function createRemoteFolder(client: BoxSDK.BoxClient, parentFolderId: string, folderName: string, retryTimes: number): Promise<BoxSDK.Folder> {
+  try {
+    return await client.folders.create(parentFolderId, folderName);
+  } catch (error) {
+    debug(`Failed to create folder '%s' (parent folder id: %s). Retries %d more times.`, folderName, parentFolderId, retryTimes);
+    const waitingTime = Math.floor(Math.random() * 1000);
+    debug(`Waiting time is %d milliseconds.`, waitingTime);
+    const startTimestamp = Date.now();
+    await sleep(waitingTime);
+    const elapsedTime = Date.now() - startTimestamp;
+    debug(`Waited for %d milliseconds.`, elapsedTime);
+    const items = await client.folders.getItems(parentFolderId);
+    debug(`%o`, { total_count: items.total_count, offset: items.offset, limit: items.limit });
+    const folder = _.first(items.entries.filter(isMiniFolder).filter(folder => folder.name === folderName));
+    if (folder) {
+      return await client.folders.get(folder.id);
+    } else if (retryTimes > 0) {
+      return await createRemoteFolder(client, parentFolderId, folderName, retryTimes - 1);
+    } else {
+      throw error;
+    }
+  }
+}
 
 export async function createRemoteFolderUnlessItExists(relativePath: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.Folder> {
   const dirs = !relativePath ? [] : relativePath.split(path.sep);
