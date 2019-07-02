@@ -23,40 +23,45 @@ export class File {
     return path.resolve(this.root, this.relativePath);
   }
 
-  synchronize(client: BoxSDK.BoxClient, pretend: boolean = false) {
-    return new Promise<ResultStatus>((resolve, reject) => {
+  private async _synchronize(client: BoxSDK.BoxClient, pretend: boolean = false, retryTimes: number, delay: number): Promise<ResultStatus> {
+    await sleep(delay);
+    try {
       if (!this.dirent) {
         // client.files.getReadStream()
-        resolve(ResultStatus.DOWNLOADED);
+        return ResultStatus.DOWNLOADED;
       } else if (!this.remoteFile) {
-        Promise.resolve().then(async () => {
-          if (pretend) return;
-
+        if (!pretend) {
           const { dir, base } = path.parse(this.relativePath);
-          try {
-            const folder = await createRemoteFolderUnlessItExists(dir, this.remoteRoot, client);
-            debug('Uploading `%s`...', this.relativePath);
-            return client.files.uploadFile(folder.id, base, this.createReadStream());
-          } catch (error) {
-            debug("Failed to create '%s' folder.", dir);
-            throw error;
-          }
-        }).then(() => resolve(ResultStatus.UPLOADED)).catch(reject);
+          const folder = await createRemoteFolderUnlessItExists(dir, this.remoteRoot, client);
+          debug('Uploading `%s`...', this.relativePath);
+          await client.files.uploadFile(folder.id, base, this.createReadStream());  
+        }
+        return ResultStatus.UPLOADED;
       } else {
-        this.digest().then(sha1 => {
-          if (sha1 === this.remoteFile!.sha1) {
-            resolve(ResultStatus.SYNCHRONIZED);
-          } else {
-            Promise.resolve().then(async () => {
-              if (pretend) return;
-
-              debug('Upgrading `%s`...', this.relativePath);
-              return client.files.uploadNewFileVersion(this.remoteFile!.id, this.createReadStream());
-            }).then(() => resolve(ResultStatus.UPGRADED)).catch(reject);
+        const sha1 = await this.digest();
+        if (sha1 === this.remoteFile!.sha1) {
+          return ResultStatus.SYNCHRONIZED;
+        } else {
+          if (!pretend) {
+            debug('Upgrading `%s`...', this.relativePath);
+            await client.files.uploadNewFileVersion(this.remoteFile!.id, this.createReadStream());
           }
-        });
+          return ResultStatus.UPGRADED;
+        }
       }
-    });
+    } catch (error) {
+      if (!isBoxAPIResponseError(error)) throw error;
+
+      debug('API Response Error: %s %s', error.statusCode, error.message);
+      debug('Retries %d more times.', retryTimes);
+      const retryAfter = Number(error.response.headers['retry-after'] || 0) * 1000;
+      debug('Tries again in %d milliseconds.', retryAfter);
+      return await this._synchronize(client, pretend, retryTimes - 1, retryAfter);
+    }
+  }
+
+  synchronize(client: BoxSDK.BoxClient, pretend: boolean = false) {
+    return this._synchronize(client, pretend, 3, 0);
   }
 
   private digest() {
@@ -65,6 +70,7 @@ export class File {
       const stream = this.createReadStream();
       stream.on('data', chunk => hash.update(chunk));
       stream.on('close', () => resolve(hash.digest('hex')));
+      stream.on('error', reject);
     });
   }
 
@@ -73,23 +79,41 @@ export class File {
   }
 }
 
+interface BoxAPIResponseError extends Error {
+  statusCode: string;
+  response: any;
+  request: any;
+}
+const isBoxAPIResponseError = (error: any): error is BoxAPIResponseError => error.statusCode && error.response && error.request && error instanceof Error;
+
 const isMiniFile = (item: BoxSDK.Item): item is BoxSDK.MiniFile => item.type === 'file';
 
 export async function findRemoteFileByPath(relativePath: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.File | undefined> {
   const { dir, base } = path.parse(relativePath);
   const dirs = dir === '' ? [] : dir.split(path.sep);
-  return await _findRemoteFileByPath(dirs, base, rootFolder, client);
+  return await _findRemoteFileByPath(dirs, base, rootFolder, client, 3, 0);
 }
 
-async function _findRemoteFileByPath(folderPath: string[], filename: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.MiniFile | undefined> {
-  const folder = await findRemoteFolderByPath(folderPath, rootFolder, client);
-  return !folder ? folder : await findRemoteFileByName(filename, client, folder.id);
+async function _findRemoteFileByPath(folderPath: string[], filename: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient, retryTimes: number, delay: number): Promise<BoxSDK.MiniFile | undefined> {
+  await sleep(delay);
+  try {
+    const folder = await findRemoteFolderByPath(folderPath, rootFolder, client);
+    return !folder ? folder : await findRemoteFileByName(filename, client, folder.id);
+  } catch (error) {
+    if (!isBoxAPIResponseError(error)) throw error;
+
+    debug('API Response Error: %s %s', error.statusCode, error.message);
+    debug('Retries %d more times.', retryTimes);
+    const retryAfter = Number(error.response.headers['retry-after'] || 0) * 1000;
+    debug('Tries again in %d milliseconds.', retryAfter);
+    return _findRemoteFileByPath(folderPath, filename, rootFolder, client, retryTimes - 1, retryAfter);
+  }
 }
 
 const isFolder = (item: BoxSDK.MiniFolder): item is BoxSDK.Folder => (item as BoxSDK.Folder).size !== undefined;
 const isMiniFolder = (item: BoxSDK.Item): item is BoxSDK.MiniFolder => item.type === 'folder';
 
-export async function findRemoteFolderByPath(folderPath: string[], rootFolder: BoxSDK.MiniFolder | undefined, client: BoxSDK.BoxClient): Promise<BoxSDK.Folder | undefined> {
+async function findRemoteFolderByPath(folderPath: string[], rootFolder: BoxSDK.MiniFolder | undefined, client: BoxSDK.BoxClient): Promise<BoxSDK.Folder | undefined> {
   if (folderPath.length === 0 || rootFolder === undefined) {
     return rootFolder === undefined || isFolder(rootFolder) ? rootFolder : await client.folders.get(rootFolder.id);
   }

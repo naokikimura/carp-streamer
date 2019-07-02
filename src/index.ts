@@ -61,39 +61,39 @@ client.folders.get(destination).then(async (rootFolder) => {
       }
       continue;
     }
-    promises.push(findRemoteFileByPath(relativePath, rootFolder, client).then(async (remoteFile) => {
-      debug('%o', { relativePath, dirent, remoteFile });
-      const file = new File(rootPath, relativePath, dirent, rootFolder, remoteFile)
-      try {
-        const status = await file.synchronize(client, pretend);
-        switch (status) {
-          case ResultStatus.DOWNLOADED:
-            console.log(`'${file.relativePath}' only exists remotely.`);
-            break;
-          case ResultStatus.SYNCHRONIZED:
-            console.log(`'${file.relativePath}' is synchronized.`);
-            break;
-          case ResultStatus.UPLOADED:
-            console.log(`'${file.relativePath}' is newly uploaded.`);
-            break;
-          case ResultStatus.UPGRADED:
-            console.log(`A new version of '${file.relativePath}' has been uploaded.`);
-            break;
-          default:
-            throw new Error('unknown result status');
-        }
-      } catch(error) {
-        debug('%s: %s', error.name, error.message);
-        debug('%s', error.stack);
-        console.log(`Failed to synchronize '${file.relativePath}'.`);
-        throw error;
+    const remoteFile = await findRemoteFileByPath(relativePath, rootFolder, client);
+    debug('%o', { relativePath, dirent, remoteFile });
+    const file = new File(rootPath, relativePath, dirent, rootFolder, remoteFile);
+    const promise = file.synchronize(client, pretend).then(status => {
+      switch (status) {
+        case ResultStatus.DOWNLOADED:
+          console.log(`'${file.relativePath}' only exists remotely.`);
+          break;
+        case ResultStatus.SYNCHRONIZED:
+          console.log(`'${file.relativePath}' is synchronized.`);
+          break;
+        case ResultStatus.UPLOADED:
+          console.log(`'${file.relativePath}' is newly uploaded.`);
+          break;
+        case ResultStatus.UPGRADED:
+          console.log(`A new version of '${file.relativePath}' has been uploaded.`);
+          break;
+        default:
+          throw new Error('unknown result status');
       }
-    }))
+      return status;
+    }).catch(error => {
+      debug('%s: %s', error.name, error.message);
+      debug('%s', error.stack);
+      console.log(`Failed to synchronize '${file.relativePath}'.`);
+      throw error;
+    });
+    promises.push(promise);
   }
   console.log(`${promises.length} entries were found.`);
   return Promise.all(promises);
-}).then(() => {
-  console.log('Successful!');
+}).then(results => {
+  console.log('Successful! %d entries were synchronized.', results.length);
   process.exit(0);
 }).catch(reason => {
   console.log('%s: %s', reason.name, reason.message);
