@@ -26,8 +26,18 @@ declare module 'box-node-sdk' {
 
   export interface Folders {
     get(folderId: string): Promise<Folder>;
-    getItems(folderId: string): Promise<Items>;
+    getItems(folderId: string, options?: GetItemsOptions): Promise<Items>;
     create(folderId: string, folderName: string): Promise<Folder>;
+  }
+
+  export interface GetItemsOptions {
+    fields?: string;
+    usemarker? : boolean;
+    marker?: string;
+    offset?: number;
+    sort?: string;
+    direction?: 'ASC' | 'DESC';
+    limit?: number;
   }
 
   export interface Files {
@@ -48,9 +58,10 @@ declare module 'box-node-sdk' {
   }
 
   export interface Items {
-    total_count: number;
+    next_marker?: string;
+    total_count?: number;
+    offset?: number;
     entries: Item[];
-    offset: number;
     limit: number;
     order: Order[];
   }

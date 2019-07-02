@@ -81,15 +81,9 @@ export async function findRemoteFileByPath(relativePath: string, rootFolder: Box
   return await _findRemoteFileByPath(dirs, base, rootFolder, client);
 }
 
-async function _findRemoteFileByPath(folderPath: string[], filename: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.File | undefined> {
+async function _findRemoteFileByPath(folderPath: string[], filename: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.MiniFile | undefined> {
   const folder = await findRemoteFolderByPath(folderPath, rootFolder, client);
-  if (!folder) return folder;
-  const items = await client.folders.getItems(folder.id);
-  return _.first(
-    items.entries
-    .filter(isMiniFile)
-    .filter(item => item.name.normalize() === filename.normalize())
-  );
+  return !folder ? folder : await findRemoteFileByName(filename, client, folder.id);
 }
 
 const isFolder = (item: BoxSDK.MiniFolder): item is BoxSDK.Folder => (item as BoxSDK.Folder).size !== undefined;
@@ -100,9 +94,8 @@ export async function findRemoteFolderByPath(folderPath: string[], rootFolder: B
     return rootFolder === undefined || isFolder(rootFolder) ? rootFolder : await client.folders.get(rootFolder.id);
   }
 
-  const folderName = _.first(folderPath);
-  const items = await client.folders.getItems(rootFolder.id);
-  const subFolder = _.first(items.entries.filter(isMiniFolder).filter(item_2 => item_2.name === folderName));
+  const folderName = _.first(folderPath) || '';
+  const subFolder = await findRemoteFolderByName(folderName, client, rootFolder.id);
   return await findRemoteFolderByPath(folderPath.slice(1), subFolder, client);
 };
 
@@ -112,8 +105,7 @@ const createRemoteFolderByPath = async (folderPath: string[], rootFolder: BoxSDK
   }
 
   const folderName = _.first(folderPath) || '';
-  const items = await client.folders.getItems(rootFolder.id);
-  const subFolder = _.first(items.entries.filter(isMiniFolder).filter(item => item.name === folderName));
+  const subFolder = await findRemoteFolderByName(folderName, client, rootFolder.id);
   const folder = subFolder || await createRemoteFolder(client, rootFolder.id, folderName, 3);
   return await createRemoteFolderByPath(folderPath.slice(1), folder, client);
 };
@@ -122,20 +114,37 @@ function sleep(delay: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, delay));
 }
 
+async function* fetchRemoteFolderItems(client: BoxSDK.BoxClient, parentFolderId: string, marker?: string): AsyncIterableIterator<BoxSDK.Item> {
+  const items = await client.folders.getItems(parentFolderId, { usemarker: true, marker });
+  yield* items.entries;
+  if (items.next_marker) yield* fetchRemoteFolderItems(client, parentFolderId, items.next_marker);
+}
+
+async function findRemoteFolderByName(folderName: string, client: BoxSDK.BoxClient, parentFolderId: string): Promise<BoxSDK.MiniFolder | undefined> {
+  for await (let item of fetchRemoteFolderItems(client, parentFolderId)) {
+    if (isMiniFolder(item) && item.name == folderName) return item;
+  }
+}
+
+async function findRemoteFileByName(fileName: string, client: BoxSDK.BoxClient, parentFolderId: string): Promise<BoxSDK.MiniFile | undefined> {
+  for await (let item of fetchRemoteFolderItems(client, parentFolderId)) {
+    if (isMiniFile(item) && item.name.normalize() == fileName.normalize()) return item;
+  }
+}
+
 async function createRemoteFolder(client: BoxSDK.BoxClient, parentFolderId: string, folderName: string, retryTimes: number): Promise<BoxSDK.Folder> {
   try {
     return await client.folders.create(parentFolderId, folderName);
   } catch (error) {
+    debug('%s: %s', error.name, error.message);
     debug(`Failed to create folder '%s' (parent folder id: %s). Retries %d more times.`, folderName, parentFolderId, retryTimes);
-    const waitingTime = Math.floor(Math.random() * 1000);
+    const waitingTime = Math.floor(Math.random() * 100);
     debug(`Waiting time is %d milliseconds.`, waitingTime);
     const startTimestamp = Date.now();
     await sleep(waitingTime);
     const elapsedTime = Date.now() - startTimestamp;
     debug(`Waited for %d milliseconds.`, elapsedTime);
-    const items = await client.folders.getItems(parentFolderId);
-    debug(`%o`, { total_count: items.total_count, offset: items.offset, limit: items.limit });
-    const folder = _.first(items.entries.filter(isMiniFolder).filter(folder => folder.name === folderName));
+    const folder = await findRemoteFolderByName(folderName, client, parentFolderId);
     if (folder) {
       return await client.folders.get(folder.id);
     } else if (retryTimes > 0) {
