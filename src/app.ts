@@ -12,6 +12,8 @@ export enum ResultStatus {
   UPGRADED
 }
 
+const INIT_RETRY_TIMES = 5;
+
 const debug = util.debuglog('carp-streamer:app');
 
 export class File {
@@ -51,17 +53,18 @@ export class File {
       }
     } catch (error) {
       if (!isBoxAPIResponseError(error)) throw error;
+      debug('API Response Error: %s', error.message);
+      if (!(error.statusCode === 429 && retryTimes > 0)) throw error;
 
-      debug('API Response Error: %s %s', error.statusCode, error.message);
       debug('Retries %d more times.', retryTimes);
-      const retryAfter = Number(error.response.headers['retry-after'] || 0) * 1000;
+      const retryAfter = (Number(error.response.headers['retry-after'] || 0) + Math.floor(Math.random() * 100) * (1 / retryTimes)) * 1000;
       debug('Tries again in %d milliseconds.', retryAfter);
       return await this._synchronize(client, pretend, retryTimes - 1, retryAfter);
     }
   }
 
   synchronize(client: BoxSDK.BoxClient, pretend: boolean = false) {
-    return this._synchronize(client, pretend, 3, 0);
+    return this._synchronize(client, pretend, INIT_RETRY_TIMES, 0);
   }
 
   private digest() {
@@ -80,7 +83,7 @@ export class File {
 }
 
 interface BoxAPIResponseError extends Error {
-  statusCode: string;
+  statusCode: number;
   response: any;
   request: any;
 }
@@ -91,7 +94,7 @@ const isMiniFile = (item: BoxSDK.Item): item is BoxSDK.MiniFile => item.type ===
 export async function findRemoteFileByPath(relativePath: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.File | undefined> {
   const { dir, base } = path.parse(relativePath);
   const dirs = dir === '' ? [] : dir.split(path.sep);
-  return await _findRemoteFileByPath(dirs, base, rootFolder, client, 3, 0);
+  return await _findRemoteFileByPath(dirs, base, rootFolder, client, INIT_RETRY_TIMES, 0);
 }
 
 async function _findRemoteFileByPath(folderPath: string[], filename: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient, retryTimes: number, delay: number): Promise<BoxSDK.MiniFile | undefined> {
@@ -101,12 +104,13 @@ async function _findRemoteFileByPath(folderPath: string[], filename: string, roo
     return !folder ? folder : await findRemoteFileByName(filename, client, folder.id);
   } catch (error) {
     if (!isBoxAPIResponseError(error)) throw error;
+    debug('API Response Error: %s', error.message);
+    if (!(error.statusCode === 429 && retryTimes > 0)) throw error;
 
-    debug('API Response Error: %s %s', error.statusCode, error.message);
     debug('Retries %d more times.', retryTimes);
-    const retryAfter = Number(error.response.headers['retry-after'] || 0) * 1000;
+    const retryAfter = (Number(error.response.headers['retry-after'] || 0) + Math.floor(Math.random() * 100) * (1 / retryTimes)) * 1000;
     debug('Tries again in %d milliseconds.', retryAfter);
-    return _findRemoteFileByPath(folderPath, filename, rootFolder, client, retryTimes - 1, retryAfter);
+    return await _findRemoteFileByPath(folderPath, filename, rootFolder, client, retryTimes - 1, retryAfter);
   }
 }
 
@@ -130,7 +134,7 @@ const createRemoteFolderByPath = async (folderPath: string[], rootFolder: BoxSDK
 
   const folderName = _.first(folderPath) || '';
   const subFolder = await findRemoteFolderByName(folderName, client, rootFolder.id);
-  const folder = subFolder || await createRemoteFolder(client, rootFolder.id, folderName, 3);
+  const folder = subFolder || await createRemoteFolder(client, rootFolder.id, folderName, INIT_RETRY_TIMES, 0);
   return await createRemoteFolderByPath(folderPath.slice(1), folder, client);
 };
 
@@ -156,33 +160,47 @@ async function findRemoteFileByName(fileName: string, client: BoxSDK.BoxClient, 
   }
 }
 
-async function createRemoteFolder(client: BoxSDK.BoxClient, parentFolderId: string, folderName: string, retryTimes: number): Promise<BoxSDK.Folder> {
+async function createRemoteFolder(client: BoxSDK.BoxClient, parentFolderId: string, folderName: string, retryTimes: number, delay: number): Promise<BoxSDK.Folder> {
+  await sleep(delay);
   try {
     return await client.folders.create(parentFolderId, folderName);
   } catch (error) {
-    debug('%s: %s', error.name, error.message);
-    debug(`Failed to create folder '%s' (parent folder id: %s). Retries %d more times.`, folderName, parentFolderId, retryTimes);
-    const waitingTime = Math.floor(Math.random() * 100);
-    debug(`Waiting time is %d milliseconds.`, waitingTime);
-    const startTimestamp = Date.now();
-    await sleep(waitingTime);
-    const elapsedTime = Date.now() - startTimestamp;
-    debug(`Waited for %d milliseconds.`, elapsedTime);
+    debug(`Failed to create folder '%s' (parent folder id: %s).`, folderName, parentFolderId);
+    if (!isBoxAPIResponseError(error)) throw error;
+    debug('API Response Error: %s', error.message);
+    if (!(error.statusCode === 409 && retryTimes > 0)) throw error;
+
     const folder = await findRemoteFolderByName(folderName, client, parentFolderId);
     if (folder) {
       return await client.folders.get(folder.id);
-    } else if (retryTimes > 0) {
-      return await createRemoteFolder(client, parentFolderId, folderName, retryTimes - 1);
     } else {
-      throw error;
+      const retryAfter = (Math.floor(Math.random() * 100) * (1 / retryTimes)) * 1000;
+      debug(`Waiting time is %d milliseconds.`, retryAfter);
+      return await createRemoteFolder(client, parentFolderId, folderName, retryTimes - 1, retryAfter);
     }
   }
 }
 
 export async function createRemoteFolderUnlessItExists(relativePath: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient): Promise<BoxSDK.Folder> {
-  const dirs = !relativePath ? [] : relativePath.split(path.sep);
-  const foundFolder = await findRemoteFolderByPath(dirs, rootFolder, client);
-  return foundFolder || await createRemoteFolderByPath(dirs, rootFolder, client)
+  return await _createRemoteFolderUnlessItExists(relativePath, rootFolder, client, INIT_RETRY_TIMES, 0);
+}
+
+async function _createRemoteFolderUnlessItExists(relativePath: string, rootFolder: BoxSDK.MiniFolder, client: BoxSDK.BoxClient, retryTimes: number, delay: number): Promise<BoxSDK.Folder> {
+  await sleep(delay);
+  try {
+    const dirs = !relativePath ? [] : relativePath.split(path.sep);
+    const foundFolder = await findRemoteFolderByPath(dirs, rootFolder, client);
+    return foundFolder || await createRemoteFolderByPath(dirs, rootFolder, client)
+  } catch (error) {
+    if (!isBoxAPIResponseError(error)) throw error;
+    debug('API Response Error: %s', error.message);
+    if (!(error.statusCode === 429 && retryTimes > 0)) throw error;
+
+    debug('Retries %d more times.', retryTimes);
+    const retryAfter = (Number(error.response.headers['retry-after'] || 0) + Math.floor(Math.random() * 100) * (1 / retryTimes)) * 1000;
+    debug('Tries again in %d milliseconds.', retryAfter);
+    return await _createRemoteFolderUnlessItExists(relativePath, rootFolder, client, retryTimes - 1, retryAfter);
+  }
 }
 
 const readdir = util.promisify(fs.readdir);
