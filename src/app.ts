@@ -4,7 +4,6 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
-import { EILSEQ } from 'constants';
 
 export enum ResultStatus {
   DOWNLOADED,
