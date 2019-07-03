@@ -6,7 +6,7 @@ import minimist from 'minimist';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
-import {File, ResultStatus, listDirectoryEntriesRecursively, findRemoteFileByPath, createRemoteFolderUnlessItExists} from './app'
+import {Entry, ResultStatus, listDirectoryEntriesRecursively} from './app'
 
 const npmPackage = require('../package.json');
 const debug = util.debuglog(`${npmPackage.name}:index`);
@@ -50,21 +50,9 @@ client.folders.get(destination).then(async (rootFolder) => {
   const promises = [];
   for await (let { path: absolutePath, dirent } of listDirectoryEntriesRecursively(rootPath)) {
     const relativePath = path.relative(rootPath, absolutePath);
-    if (dirent.isDirectory()) {
-      try {
-        if (!pretend) await createRemoteFolderUnlessItExists(relativePath, rootFolder, client);
-      } catch (error) {
-        debug('%s: %s', error.name, error.message);
-        debug('%s', error.stack);
-        console.log(`Failed to synchronize '${relativePath}'.`);
-        throw error;
-      }
-      continue;
-    }
-    const promise = findRemoteFileByPath(relativePath, rootFolder, client).then(remoteFile => {
-      debug('%o', { relativePath, dirent, remoteFile });
-      return new File(rootPath, relativePath, dirent, rootFolder, remoteFile);
-    }).then(file => file.synchronize(client, pretend)).then(status => {
+    const promise = Entry.create(dirent, rootPath, relativePath, rootFolder, client)
+    .then(entry => entry.synchronize(client, pretend))
+    .then(status => {
       switch (status) {
         case ResultStatus.DOWNLOADED:
           console.log(`'${relativePath}' only exists remotely.`);
