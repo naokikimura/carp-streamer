@@ -61,22 +61,22 @@ client.folders.get(destination).then(async (rootFolder) => {
       }
       continue;
     }
-    const remoteFile = await findRemoteFileByPath(relativePath, rootFolder, client);
-    debug('%o', { relativePath, dirent, remoteFile });
-    const file = new File(rootPath, relativePath, dirent, rootFolder, remoteFile);
-    const promise = file.synchronize(client, pretend).then(status => {
+    const promise = findRemoteFileByPath(relativePath, rootFolder, client).then(remoteFile => {
+      debug('%o', { relativePath, dirent, remoteFile });
+      return new File(rootPath, relativePath, dirent, rootFolder, remoteFile);
+    }).then(file => file.synchronize(client, pretend)).then(status => {
       switch (status) {
         case ResultStatus.DOWNLOADED:
-          console.log(`'${file.relativePath}' only exists remotely.`);
+          console.log(`'${relativePath}' only exists remotely.`);
           break;
         case ResultStatus.SYNCHRONIZED:
-          console.log(`'${file.relativePath}' is synchronized.`);
+          console.log(`'${relativePath}' is synchronized.`);
           break;
         case ResultStatus.UPLOADED:
-          console.log(`'${file.relativePath}' is newly uploaded.`);
+          console.log(`'${relativePath}' is newly uploaded.`);
           break;
         case ResultStatus.UPGRADED:
-          console.log(`A new version of '${file.relativePath}' has been uploaded.`);
+          console.log(`A new version of '${relativePath}' has been uploaded.`);
           break;
         default:
           throw new Error('unknown result status');
@@ -85,7 +85,7 @@ client.folders.get(destination).then(async (rootFolder) => {
     }).catch(error => {
       debug('%s: %s', error.name, error.message);
       debug('%s', error.stack);
-      console.log(`Failed to synchronize '${file.relativePath}'.`);
+      console.log(`Failed to synchronize '${relativePath}'.`);
       throw error;
     });
     promises.push(promise);
