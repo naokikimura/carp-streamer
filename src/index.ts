@@ -4,6 +4,7 @@ import BoxSDK from 'box-node-sdk';
 import _ from 'lodash';
 import minimist from 'minimist';
 import async from 'async';
+import ora from 'ora';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
@@ -49,6 +50,7 @@ const client = createBoxClient({ appConfig, token: args.token });
 if (args['as-user']) {
   client.asUser(args['as-user']);
 }
+const spinner = ora().start('synchronizing...');
 client.folders.get(destination).then(async (rootFolder) => {
   const q = async.queue(async ({ path: absolutePath, dirent }, done) => {
     const relativePath = path.relative(rootPath, absolutePath);
@@ -57,25 +59,24 @@ client.folders.get(destination).then(async (rootFolder) => {
       const status = await entry.synchronize(client, pretend);
       switch (status) {
         case ResultStatus.DOWNLOADED:
-          console.log(`'${relativePath}' only exists remotely.`);
+          spinner.succeed(`'${relativePath}' only exists remotely.`);
           break;
         case ResultStatus.SYNCHRONIZED:
-          console.log(`'${relativePath}' is synchronized.`);
+          spinner.succeed(`'${relativePath}' is synchronized.`);
           break;
         case ResultStatus.UPLOADED:
-          console.log(`'${relativePath}' is newly uploaded.`);
+          spinner.succeed(`'${relativePath}' is newly uploaded.`);
           break;
         case ResultStatus.UPGRADED:
-          console.log(`A new version of '${relativePath}' has been uploaded.`);
+          spinner.succeed(`A new version of '${relativePath}' has been uploaded.`);
           break;
         default:
           throw new Error('unknown result status');
       }
       done();
     } catch (error) {
-      debug('%s: %s', error.name, error.message);
-      debug('%s', error.stack);
-      console.log(`Failed to synchronize '${relativePath}'.`);
+      debug('%s: %s\n%s', error.name, error.message, error.stack);
+      spinner.fail(`Failed to synchronize '${relativePath}'.`);
       done(error);
     }
   }, concurrency);
@@ -84,14 +85,13 @@ client.folders.get(destination).then(async (rootFolder) => {
     q.push(entry);
     count++;
   }
-  console.log(`${count} entries were found.`);
+  spinner.info(`${count} entries were found.`);
   return await q.drain();
 }).then(results => {
-  console.log('Successful!');
+  spinner.info('Successful!');
   process.exit(0);
 }).catch(reason => {
-  console.log('%s: %s', reason.name, reason.message);
-  debug('%s', reason.stack);
-  console.log(`Failure!`);
+  debug('%s: %s\n%s', reason.name, reason.message, reason.stack);
+  spinner.warn(`Failure! ${reason.name}: ${reason.message}`);
   process.exit(1);
 });
