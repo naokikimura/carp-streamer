@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import BoxSDK from 'box-node-sdk';
-import _ from 'lodash';
 import minimist from 'minimist';
 import async from 'async';
 import ora from 'ora';
@@ -17,13 +16,12 @@ const debug = util.debuglog(`${npmPackage.name}:index`);
 
 const argsOption = {
   'alias': { t: 'token', v: 'version', c: 'concurrency' },
-  'string': ['t', 'as-user'],
+  'string': ['t', 'as-user', 'exclude'],
   'boolean': ['v', 'dry-run', 'progress'],
   'number': ['c'],
   'default': { 'dry-run': false, concurrency: 10, progress: false }
 };
 const args = minimist(process.argv.slice(2), argsOption);
-
 if (args.version) {
   console.log(npmPackage.version);
   process.exit(0);
@@ -39,6 +37,7 @@ if (source === undefined || destination === undefined) {
 const pretend: boolean = args['dry-run'];
 const concurrency: number = args['concurrency'];
 const needProgress: boolean = args['progress'];
+const excludes = (args['exclude'] && [].concat(args['exclude']) || []).map(exclude => path.resolve(process.cwd(), exclude));
 
 const appConfig = process.env.BOX_APP_CONFIG && JSON.parse(fs.readFileSync(process.env.BOX_APP_CONFIG).toString());
 const createBoxClient = (params: { appConfig?: object, token?: string }) => {
@@ -63,6 +62,10 @@ const spinner = ora({ stream: needProgress ? nullDevice : process.stderr }).star
 client.folders.get(destination).then(async (rootFolder) => {
   const q = async.queue(async ({ path: absolutePath, dirent }, done) => {
     const relativePath = path.relative(rootPath, absolutePath);
+    if (excludes.some(exclude => absolutePath.startsWith(exclude))) {
+      spinner.succeed(`'${relativePath}' has been excluded.`);
+      return done();
+    }
     try {
       const entry = await Entry.create(dirent, rootPath, relativePath, rootFolder, client);
       const status = await entry.synchronize(client, pretend);
