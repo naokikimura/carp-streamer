@@ -63,6 +63,7 @@ client.folders.get(destination).then(async (rootFolder) => {
   const q = async.queue(async ({ path: absolutePath, dirent, error }, done) => {
     const relativePath = path.relative(rootPath, absolutePath);
     if (error) {
+      debug('%s: %s\n%s', error.name, error.message, error.stack);
       spinner.warn(`Could not access '${relativePath}'.`);
       return done(error);
     }
