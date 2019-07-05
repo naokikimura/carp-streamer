@@ -60,10 +60,14 @@ const nullDevice = new class extends Writable {
 const progressBar = new progress('  synchronizing [:bar] :percent :etas', { total: Number.MAX_SAFE_INTEGER, stream: needProgress ? process.stderr : nullDevice });
 const spinner = ora({ stream: needProgress ? nullDevice : process.stderr }).start('synchronizing...');
 client.folders.get(destination).then(async (rootFolder) => {
-  const q = async.queue(async ({ path: absolutePath, dirent }, done) => {
+  const q = async.queue(async ({ path: absolutePath, dirent, error }, done) => {
     const relativePath = path.relative(rootPath, absolutePath);
+    if (error) {
+      spinner.warn(`Could not access '${relativePath}'.`);
+      return done(error);
+    }
     if (excludes.some(exclude => absolutePath.startsWith(exclude))) {
-      spinner.succeed(`'${relativePath}' has been excluded.`);
+      spinner.info(`'${relativePath}' has been excluded.`);
       return done();
     }
     try {

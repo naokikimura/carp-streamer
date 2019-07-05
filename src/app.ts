@@ -231,12 +231,16 @@ async function createRemoteFolderUnlessItExists(relativePath: string, rootFolder
 }
 
 const readdir = util.promisify(fs.readdir);
-export async function* listDirectoryEntriesRecursively(root: string): AsyncIterableIterator<{path: string, dirent: fs.Dirent}> {
-  for(let dirent of await readdir(root, { withFileTypes: true })) {
-    const entryPath = path.join(root, dirent.name);
-    yield ({ path: entryPath, dirent });
-    if (dirent.isDirectory()) {
-      yield* listDirectoryEntriesRecursively(entryPath);
+export async function* listDirectoryEntriesRecursively(root: string): AsyncIterableIterator<{path: string, dirent: fs.Dirent | null, error:any}> {
+  try {
+    for(let dirent of await readdir(root, { withFileTypes: true })) {
+      const entryPath = path.join(root, dirent.name);
+      yield ({ path: entryPath, dirent, error: null });
+      if (dirent.isDirectory()) {
+        yield* listDirectoryEntriesRecursively(entryPath);
+      }
     }
+  } catch (error) {
+    yield { path: root, dirent: null, error};
   }
 }
