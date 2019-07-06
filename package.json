@@ -1,6 +1,6 @@
 {
   "name": "carp-streamer",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Carp streamer",
   "bin": "dist/index.js",
   "scripts": {
