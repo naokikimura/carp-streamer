@@ -57,7 +57,7 @@ const nullDevice = new class extends Writable {
     callback();
   }
 }();
-const progressBar = new progress('  synchronizing [:bar] :percent :etas', { total: Number.MAX_SAFE_INTEGER, stream: needProgress ? process.stderr : nullDevice });
+const progressBar = new progress('  synchronizing... [:bar] :percent (:current/:total) :elapseds :etas', { total: Number.MAX_SAFE_INTEGER, stream: needProgress ? process.stderr : nullDevice });
 const spinner = ora({ stream: needProgress ? nullDevice : process.stderr }).start('synchronizing...');
 client.folders.get(destination).then(async (rootFolder) => {
   const q = async.queue(async ({ path: absolutePath, dirent, error }, done) => {
