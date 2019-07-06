@@ -44,11 +44,11 @@ export abstract class Entry {
     }
   }
 
-  static create(dirent: fs.Dirent, root: string, relativePath: string, remoteRoot: BoxSDK.Folder, client: BoxSDK.BoxClient): Promise<Entry> {
+  static create(dirent: fs.Dirent | null, root: string, relativePath: string, remoteRoot: BoxSDK.Folder, client: BoxSDK.BoxClient): Promise<Entry> {
     return Entry._create(dirent, root, relativePath, remoteRoot, client, INIT_RETRY_TIMES, 0);
   }
 
-  private static async _create(dirent: fs.Dirent, root: string, relativePath: string, remoteRoot: BoxSDK.Folder, client: BoxSDK.BoxClient, retryTimes: number, delay: number): Promise<Entry> {
+  private static async _create(dirent: fs.Dirent | null, root: string, relativePath: string, remoteRoot: BoxSDK.Folder, client: BoxSDK.BoxClient, retryTimes: number, delay: number): Promise<Entry> {
     await sleep(delay);
     try {
       if (!dirent) {
