@@ -8,7 +8,7 @@ import progress from 'progress';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
-import { Entry, ResultStatus, listDirectoryEntriesRecursively } from './app'
+import { Entry, ResultStatus, listDirectoryEntriesRecursively, createDirentFromStats } from './app'
 import { Writable } from 'stream';
 
 const npmPackage = require('../package.json');
@@ -27,10 +27,11 @@ if (args.version) {
   process.exit(0);
 }
 
-const [source, destination] = args._
+const sources = args._.slice(0, -1);
+const [destination] = args._.slice(-1);
 
-if (source === undefined || destination === undefined) {
-  console.error(`usage: ${npmPackage.name} [options] source destination`);
+if (sources.length === 0 || destination === undefined) {
+  console.error(`usage: ${npmPackage.name} [options] source... destination`);
   process.exit(1);
 }
 
@@ -99,12 +100,22 @@ const spinner = ora({ stream: (logFile && fs.createWriteStream(logFile)) || (nee
       }
       progressBar.tick();
     }, concurrency);
-    const rootPath = path.resolve(process.cwd(), source);
     const rootFolder = await client.folders.get(destination);
     let count = 0;
-    for await (let entry of listDirectoryEntriesRecursively(rootPath)) {
-      q.push({entry, rootPath, rootFolder});
-      count++;
+    for await (let source of sources) {
+      const rootPath = path.resolve(process.cwd(), source);
+      const stats = fs.statSync(rootPath);
+      if (!stats.isDirectory()) {
+        const { dir, base } = path.parse(rootPath);
+        const entry = { path: rootPath, dirent: createDirentFromStats(stats, base), error: null };
+        q.push({entry, rootPath: dir, rootFolder});
+        count++;
+        continue;
+      }
+      for await (let entry of listDirectoryEntriesRecursively(rootPath)) {
+        q.push({entry, rootPath, rootFolder});
+        count++;
+      }
     }
     progressBar.total = count;
     spinner.info(`${count} entries were found.`);

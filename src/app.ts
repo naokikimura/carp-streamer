@@ -230,10 +230,24 @@ async function createRemoteFolderUnlessItExists(relativePath: string, rootFolder
   return foundFolder || await createRemoteFolderByPath(dirs, rootFolder, client)
 }
 
-const readdir = util.promisify(fs.readdir);
+export function createDirentFromStats(stats: fs.Stats, name: string): fs.Dirent {
+  interface DirentLike extends fs.Dirent { }
+  return new class implements DirentLike {
+    get name() { return name; }
+    isBlockDevice() { return stats.isBlockDevice(); }
+    isCharacterDevice() { return stats.isCharacterDevice(); }
+    isDirectory() { return stats.isDirectory(); }
+    isFIFO() { return stats.isFIFO(); }
+    isFile() { return stats.isFile(); }
+    isSocket() { return stats.isSocket(); }
+    isSymbolicLink() { return stats.isSymbolicLink(); }
+  };
+}
+
+const readdirAsync = util.promisify(fs.readdir);
 export async function* listDirectoryEntriesRecursively(root: string): AsyncIterableIterator<{path: string, dirent: fs.Dirent | null, error:any}> {
   try {
-    for(let dirent of await readdir(root, { withFileTypes: true })) {
+    for(let dirent of await readdirAsync(root, { withFileTypes: true })) {
       const entryPath = path.join(root, dirent.name);
       yield ({ path: entryPath, dirent, error: null });
       if (dirent.isDirectory()) {
