@@ -21,6 +21,7 @@
             true,
             120
         ],
+        "max-classes-per-file": false,
         "no-empty": false,
         "no-unused-expression": [
             true,
