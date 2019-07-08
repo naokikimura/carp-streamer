@@ -20,7 +20,7 @@ const argsOption = {
   boolean: ['v', 'dry-run', 'progress'],
   default: { 'dry-run': false, 'concurrency': 10, 'progress': false },
   number: ['c'],
-  string: ['t', 'as-user', 'exclude', 'log-file'],
+  string: ['t', 'as-user', 'exclude'],
 };
 const args = minimist(process.argv.slice(2), argsOption);
 if (args.version) {
@@ -39,7 +39,6 @@ if (sources.length === 0 || destination === undefined) {
 const pretend: boolean = args['dry-run'];
 const concurrency: number = args.concurrency;
 const needProgress: boolean = args.progress;
-const logFile = args['log-file'] && path.resolve(process.cwd(), args['log-file']);
 const excludes = (args.exclude && [].concat(args.exclude) || [])
   .map(exclude => path.resolve(process.cwd(), exclude));
 const nullDevice = new class extends Writable {
@@ -52,7 +51,7 @@ const progressBar = new progress(
   { total: Number.MAX_SAFE_INTEGER, stream: needProgress ? process.stderr : nullDevice }
 );
 const spinner = ora({
-  stream: (logFile && fs.createWriteStream(logFile)) || (needProgress ? nullDevice : process.stdout)
+  stream: process.stdout.isTTY && needProgress ? nullDevice : process.stdout,
 }).start('synchronizing...');
 
 (async () => {
