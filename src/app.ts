@@ -9,7 +9,8 @@ export enum ResultStatus {
   DOWNLOADED,
   SYNCHRONIZED,
   UPLOADED,
-  UPGRADED
+  UPGRADED,
+  CREATED
 }
 
 const INIT_RETRY_TIMES = 5;
@@ -87,8 +88,12 @@ class Directory extends Entry {
   }
 
   protected async sync(client: BoxSDK.BoxClient, pretend: boolean = false): Promise<ResultStatus> {
-    if (!pretend) { await createRemoteFolderUnlessItExists(this.relativePath, this.remoteRoot, client); }
-    return ResultStatus.SYNCHRONIZED;
+    if (this.remoteFolder) {
+      return ResultStatus.SYNCHRONIZED;
+    } else {
+      if (!pretend) { await createRemoteFolderUnlessItExists(this.relativePath, this.remoteRoot, client); }
+      return ResultStatus.CREATED;
+    }
   }
 }
 

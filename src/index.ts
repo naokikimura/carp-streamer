@@ -137,6 +137,9 @@ async function worker(task: Task, done: async.ErrorCallback) {
       case ResultStatus.UPGRADED:
         spinner.succeed(`A new version of '${absolutePath}' has been uploaded.`);
         break;
+      case ResultStatus.CREATED:
+        spinner.succeed(`'${absolutePath}' is newly created.`);
+        break;
       default:
         throw new Error('unknown result status');
     }
