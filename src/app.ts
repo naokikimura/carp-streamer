@@ -164,7 +164,7 @@ const isMiniFolder = (item: BoxSDK.Item): item is BoxSDK.MiniFolder => item.type
 
 function findRemoteFolderByPath(relativePath: string, rootFolder: BoxSDK.MiniFolder | undefined, client: BoxSDK.BoxClient): Promise<BoxSDK.Folder | undefined> {
   const { dir, base } = path.parse(relativePath);
-  const dirs = dir === '' ? [] : dir.split(path.sep);
+  const dirs = (dir === '' ? [] : dir.split(path.sep)).concat(base);
   return _findRemoteFolderByPath(dirs, rootFolder, client);
 }
 
