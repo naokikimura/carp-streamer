@@ -9,7 +9,8 @@ import path from 'path';
 import progress from 'progress';
 import { Writable } from 'stream';
 import util from 'util';
-import { BoxFinder, createDirentFromStats, Entry, listDirectoryEntriesRecursively, ResultStatus } from './app';
+import { createDirentFromStats, Entry, listDirectoryEntriesRecursively, ResultStatus } from './app';
+import { BoxFinder } from './box';
 
 // tslint:disable-next-line: no-var-requires
 const npmPackage = require('../package.json');
