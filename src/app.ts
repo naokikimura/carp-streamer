@@ -19,16 +19,11 @@ const debug = util.debuglog('carp-streamer:app');
 
 export abstract class Entry {
 
-  get absolutePath() {
-    return path.resolve(this.root, this.relativePath);
+  public static create(relativePath: string, finder: BoxFinder, dirent?: fs.Dirent) {
+    return Entry._create(relativePath, finder, dirent, INIT_RETRY_TIMES, 0);
   }
 
-  public static create(dirent: fs.Dirent | null, root: string, relativePath: string, remoteRoot: BoxSDK.Folder, client: BoxSDK.BoxClient): Promise<Entry> {
-    return Entry._create(dirent, root, relativePath, remoteRoot, client, INIT_RETRY_TIMES, 0);
-  }
-
-  private static async _create(dirent: fs.Dirent | null, root: string, relativePath: string, remoteRoot: BoxSDK.Folder, client: BoxSDK.BoxClient, retryTimes: number, delay: number): Promise<Entry> {
-    const finder = new BoxFinder(client, remoteRoot);
+  private static async _create(relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, retryTimes = INIT_RETRY_TIMES, delay = 0): Promise<Entry> {
     await sleep(delay);
     try {
       if (!dirent) {
@@ -36,10 +31,10 @@ export abstract class Entry {
         throw new Error('Not Implemented Error');
       } else if (dirent.isDirectory()) {
         const remoteFolder = await finder.findFolderByPath(relativePath);
-        return new Directory(root, relativePath, dirent, remoteRoot, remoteFolder);
+        return new Directory(relativePath, finder, dirent, remoteFolder);
       } else {
         const remoteFile = await finder.findFileByPath(relativePath);
-        return new File(root, relativePath, dirent, remoteRoot, remoteFile);
+        return new File(relativePath, finder, dirent, remoteFile);
       }
     } catch (error) {
       if (!isBoxAPIResponseError(error)) { throw error; }
@@ -49,22 +44,22 @@ export abstract class Entry {
       debug('Retries %d more times.', retryTimes);
       const retryAfter = determineDelayTime(error, retryTimes);
       debug('Tries again in %d milliseconds.', retryAfter);
-      return this._create(dirent, root, relativePath, remoteRoot, client, retryTimes - 1, retryAfter);
+      return this._create(relativePath, finder, dirent, retryTimes - 1, retryAfter);
     }
   }
 
-  constructor(protected root: string, readonly relativePath: string, protected dirent: fs.Dirent | undefined, protected remoteRoot: BoxSDK.Folder) { }
+  constructor(readonly relativePath: string, protected finder: BoxFinder, protected dirent?: fs.Dirent) { }
 
-  public synchronize(client: BoxSDK.BoxClient, pretend: boolean = false) {
-    return this._synchronize(client, pretend, INIT_RETRY_TIMES, 0);
+  public synchronize(pretend: boolean = false) {
+    return this._synchronize(pretend);
   }
 
-  protected abstract sync(client: BoxSDK.BoxClient, pretend: boolean): Promise<ResultStatus>;
+  protected abstract sync(pretend: boolean): Promise<ResultStatus>;
 
-  private async _synchronize(client: BoxSDK.BoxClient, pretend: boolean, retryTimes: number, delay: number): Promise<ResultStatus> {
+  private async _synchronize(pretend: boolean, retryTimes = INIT_RETRY_TIMES, delay = 0): Promise<ResultStatus> {
     await sleep(delay);
     try {
-      return await this.sync(client, pretend);
+      return await this.sync(pretend);
     } catch (error) {
       if (!isBoxAPIResponseError(error)) { throw error; }
       debug('API Response Error: %s', error.message);
@@ -73,7 +68,7 @@ export abstract class Entry {
       debug('Retries %d more times.', retryTimes);
       const retryAfter = determineDelayTime(error, retryTimes);
       debug('Tries again in %d milliseconds.', retryAfter);
-      return this._synchronize(client, pretend, retryTimes - 1, retryAfter);
+      return this._synchronize(pretend, retryTimes - 1, retryAfter);
     }
   }
 }
@@ -84,45 +79,45 @@ function determineDelayTime(error: BoxAPIResponseError, retryTimes: number): num
 }
 
 class Directory extends Entry {
-  constructor(root: string, relativePath: string, dirent: fs.Dirent | undefined, remoteRoot: BoxSDK.Folder, private remoteFolder: BoxSDK.MiniFolder | undefined) {
-    super(root, relativePath, dirent, remoteRoot);
+  constructor(relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, private remoteFolder?: BoxSDK.MiniFolder) {
+    super(relativePath, finder, dirent);
   }
 
-  protected async sync(client: BoxSDK.BoxClient, pretend: boolean = false): Promise<ResultStatus> {
+  protected async sync(pretend: boolean = false): Promise<ResultStatus> {
     if (this.remoteFolder) {
       return ResultStatus.SYNCHRONIZED;
     } else {
-      if (!pretend) { await new BoxFinder(client, this.remoteRoot).createFolderUnlessItExists(this.relativePath); }
+      if (!pretend) { await this.finder.createFolderUnlessItExists(this.relativePath); }
       return ResultStatus.CREATED;
     }
   }
 }
 
 class File extends Entry {
-  constructor(root: string, relativePath: string, dirent: fs.Dirent | undefined, remoteRoot: BoxSDK.Folder, private remoteFile: BoxSDK.MiniFile | undefined) {
-    super(root, relativePath, dirent, remoteRoot);
+  constructor(relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, private remoteFile?: BoxSDK.MiniFile) {
+    super(relativePath, finder, dirent);
   }
 
-  protected async sync(client: BoxSDK.BoxClient, pretend: boolean = false): Promise<ResultStatus> {
+  protected async sync(pretend: boolean = false): Promise<ResultStatus> {
     if (!this.dirent) {
       // client.files.getReadStream()
       return ResultStatus.DOWNLOADED;
     } else if (!this.remoteFile) {
       if (!pretend) {
         const { dir, base } = path.parse(this.relativePath);
-        const folder = await new BoxFinder(client, this.remoteRoot).createFolderUnlessItExists(dir);
+        const folder = await this.finder.createFolderUnlessItExists(dir);
         debug('Uploading `%s`...', this.relativePath);
-        await client.files.uploadFile(folder.id, base, this.createReadStream());
+        await this.finder.client.files.uploadFile(folder.id, base, this.createReadStream());
       }
       return ResultStatus.UPLOADED;
     } else {
       const sha1 = await this.digest();
-      if (sha1 === this.remoteFile!.sha1) {
+      if (sha1 === this.remoteFile.sha1) {
         return ResultStatus.SYNCHRONIZED;
       } else {
         if (!pretend) {
           debug('Upgrading `%s`...', this.relativePath);
-          await client.files.uploadNewFileVersion(this.remoteFile!.id, this.createReadStream());
+          await this.finder.client.files.uploadNewFileVersion(this.remoteFile.id, this.createReadStream());
         }
         return ResultStatus.UPGRADED;
       }
@@ -140,7 +135,7 @@ class File extends Entry {
   }
 
   private createReadStream() {
-    return fs.createReadStream(this.absolutePath);
+    return fs.createReadStream(this.relativePath);
   }
 }
 
@@ -154,7 +149,6 @@ const isBoxAPIResponseError = (error: any): error is BoxAPIResponseError =>
   error.statusCode && error.response && error.request && error instanceof Error;
 
 const isMiniFile = (item: BoxSDK.Item): item is BoxSDK.MiniFile => item.type === 'file';
-
 const isFolder = (item: BoxSDK.MiniFolder): item is BoxSDK.Folder => (item as BoxSDK.Folder).size !== undefined;
 const isMiniFolder = (item: BoxSDK.Item): item is BoxSDK.MiniFolder => item.type === 'folder';
 
@@ -162,7 +156,7 @@ function sleep(delay: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, delay));
 }
 
-class BoxFinder {
+export class BoxFinder {
 
   public static async create(client: BoxSDK.BoxClient, folderId = '0') {
     const folder = await client.folders.get(folderId);
@@ -190,23 +184,23 @@ class BoxFinder {
     return BoxFinder._findFolderByPath(folderPath.slice(1), subFolder && finder.new(subFolder));
   }
 
-  constructor(private client: BoxSDK.BoxClient, private current: BoxSDK.MiniFolder) {
+  constructor(readonly client: BoxSDK.BoxClient, readonly current: BoxSDK.MiniFolder) {
   }
 
-  public async createFolderUnlessItExists(relativePath: string): Promise<BoxSDK.Folder> {
+  public async createFolderUnlessItExists(relativePath: string) {
     const dirs = !relativePath ? [] : relativePath.split(path.sep);
     const foundFolder = await BoxFinder._findFolderByPath(dirs, this);
     return foundFolder || await BoxFinder.createFolderByPath(dirs, this);
   }
 
-  public async findFileByPath(relativePath: string): Promise<BoxSDK.File | undefined> {
+  public async findFileByPath(relativePath: string) {
     const { dir, base } = path.parse(relativePath);
     const dirs = dir === '' ? [] : dir.split(path.sep);
     const folder = await BoxFinder._findFolderByPath(dirs, this);
     return folder && await this.new(folder).findFileByName(base);
   }
 
-  public findFolderByPath(relativePath: string): Promise<BoxSDK.Folder | undefined> {
+  public findFolderByPath(relativePath: string) {
     const { dir, base } = path.parse(relativePath);
     const dirs = (dir === '' ? [] : dir.split(path.sep)).concat(base);
     return BoxFinder._findFolderByPath(dirs, this);
@@ -238,11 +232,11 @@ class BoxFinder {
     }
   }
 
-  private findFileByName(fileName: string): Promise<BoxSDK.MiniFile | undefined> {
+  private findFileByName(fileName: string) {
     return this.findItemByName<BoxSDK.MiniFile>(fileName, isMiniFile);
   }
 
-  private findFolderByName(folderName: string): Promise<BoxSDK.MiniFolder | undefined> {
+  private findFolderByName(folderName: string) {
     return this.findItemByName<BoxSDK.MiniFolder>(folderName, isMiniFolder);
   }
 
@@ -276,7 +270,7 @@ export function createDirentFromStats(stats: fs.Stats, name: string): fs.Dirent 
 }
 
 const readdirAsync = util.promisify(fs.readdir);
-export async function* listDirectoryEntriesRecursively(root: string): AsyncIterableIterator<{ path: string, dirent: fs.Dirent | null, error: any }> {
+export async function* listDirectoryEntriesRecursively(root: string): AsyncIterableIterator<{ path: string, dirent?: fs.Dirent, error?: any }> {
   try {
     for (const dirent of await readdirAsync(root, { withFileTypes: true })) {
       const entryPath = path.join(root, dirent.name);
@@ -286,6 +280,6 @@ export async function* listDirectoryEntriesRecursively(root: string): AsyncItera
       }
     }
   } catch (error) {
-    yield { path: root, dirent: null, error };
+    yield { path: root, dirent: undefined, error };
   }
 }

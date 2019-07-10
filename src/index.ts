@@ -9,7 +9,7 @@ import path from 'path';
 import progress from 'progress';
 import { Writable } from 'stream';
 import util from 'util';
-import { createDirentFromStats, Entry, listDirectoryEntriesRecursively, ResultStatus } from './app';
+import { BoxFinder, createDirentFromStats, Entry, listDirectoryEntriesRecursively, ResultStatus } from './app';
 
 // tslint:disable-next-line: no-var-requires
 const npmPackage = require('../package.json');
@@ -68,7 +68,7 @@ const spinner = ora({
     }
 
     const q = async.queue(worker, concurrency);
-    const rootFolder = await client.folders.get(destination);
+    const finder = await BoxFinder.create(client, destination);
     let count = 0;
     for await (const source of sources) {
       const rootPath = path.resolve(process.cwd(), source);
@@ -76,12 +76,12 @@ const spinner = ora({
       if (!stats.isDirectory()) {
         const { dir, base } = path.parse(rootPath);
         const entry = { path: rootPath, dirent: createDirentFromStats(stats, base), error: null };
-        q.push({ entry, rootPath: dir, rootFolder, client });
+        q.push({ entry, rootPath: dir, finder });
         count++;
         continue;
       }
       for await (const entry of listDirectoryEntriesRecursively(rootPath)) {
-        q.push({ entry, rootPath, rootFolder, client });
+        q.push({ entry, rootPath, finder });
         count++;
       }
     }
@@ -102,14 +102,13 @@ const spinner = ora({
 })();
 
 interface Task {
-  entry: { path: string, dirent: fs.Dirent | null, error: any };
+  entry: { path: string, dirent?: fs.Dirent, error?: any };
   rootPath: string;
-  rootFolder: BoxSDK.Folder;
-  client: BoxSDK.BoxClient;
+  finder: BoxFinder;
 }
 
 async function worker(task: Task, done: async.ErrorCallback) {
-  const { entry: { path: absolutePath, dirent, error }, rootPath, rootFolder, client } = task;
+  const { entry: { path: absolutePath, dirent, error }, rootPath, finder } = task;
   const relativePath = path.relative(rootPath, absolutePath);
   if (error) {
     debug('%s: %s\n%s', error.name, error.message, error.stack);
@@ -121,8 +120,8 @@ async function worker(task: Task, done: async.ErrorCallback) {
     return done();
   }
   try {
-    const entry = await Entry.create(dirent, rootPath, relativePath, rootFolder, client);
-    const status = await entry.synchronize(client, pretend);
+    const entry = await Entry.create(relativePath, finder, dirent);
+    const status = await entry.synchronize(pretend);
     switch (status) {
       case ResultStatus.DOWNLOADED:
         spinner.succeed(`'${absolutePath}' only exists remotely.`);
