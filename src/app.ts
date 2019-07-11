@@ -18,12 +18,15 @@ export enum ResultStatus {
 const debug = util.debuglog('carp-streamer:app');
 
 export abstract class Entry {
-
-  public static create(relativePath: string, finder: BoxFinder, dirent?: fs.Dirent) {
-    return Entry._create(relativePath, finder, dirent, INIT_RETRY_TIMES, 0);
+  get absolutePath() {
+    return path.resolve(this.rootPath, this.relativePath);
   }
 
-  private static async _create(relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, retryTimes = INIT_RETRY_TIMES, delay = 0): Promise<Entry> {
+  public static create(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent) {
+    return Entry._create(rootPath, relativePath, finder, dirent, INIT_RETRY_TIMES, 0);
+  }
+
+  private static async _create(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, retryTimes = INIT_RETRY_TIMES, delay = 0): Promise<Entry> {
     await sleep(delay);
     try {
       if (!dirent) {
@@ -31,10 +34,10 @@ export abstract class Entry {
         throw new Error('Not Implemented Error');
       } else if (dirent.isDirectory()) {
         const remoteFolder = await finder.findFolderByPath(relativePath);
-        return new Directory(relativePath, finder, dirent, remoteFolder);
+        return new Directory(rootPath, relativePath, finder, dirent, remoteFolder);
       } else {
         const remoteFile = await finder.findFileByPath(relativePath);
-        return new File(relativePath, finder, dirent, remoteFile);
+        return new File(rootPath, relativePath, finder, dirent, remoteFile);
       }
     } catch (error) {
       if (!isBoxAPIResponseError(error)) { throw error; }
@@ -44,11 +47,11 @@ export abstract class Entry {
       debug('Retries %d more times.', retryTimes);
       const retryAfter = determineDelayTime(error, retryTimes);
       debug('Tries again in %d milliseconds.', retryAfter);
-      return this._create(relativePath, finder, dirent, retryTimes - 1, retryAfter);
+      return this._create(rootPath, relativePath, finder, dirent, retryTimes - 1, retryAfter);
     }
   }
 
-  constructor(readonly relativePath: string, protected finder: BoxFinder, protected dirent?: fs.Dirent) { }
+  constructor(private rootPath: string, readonly relativePath: string, protected finder: BoxFinder, protected dirent?: fs.Dirent) { }
 
   public synchronize(pretend: boolean = false) {
     return this._synchronize(pretend);
@@ -79,8 +82,8 @@ function determineDelayTime(error: BoxAPIResponseError, retryTimes: number): num
 }
 
 class Directory extends Entry {
-  constructor(relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, private remoteFolder?: BoxSDK.MiniFolder) {
-    super(relativePath, finder, dirent);
+  constructor(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, private remoteFolder?: BoxSDK.MiniFolder) {
+    super(rootPath, relativePath, finder, dirent);
   }
 
   protected async sync(pretend: boolean = false): Promise<ResultStatus> {
@@ -94,8 +97,8 @@ class Directory extends Entry {
 }
 
 class File extends Entry {
-  constructor(relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, private remoteFile?: BoxSDK.MiniFile) {
-    super(relativePath, finder, dirent);
+  constructor(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, private remoteFile?: BoxSDK.MiniFile) {
+    super(rootPath, relativePath, finder, dirent);
   }
 
   protected async sync(pretend: boolean = false): Promise<ResultStatus> {
@@ -135,7 +138,7 @@ class File extends Entry {
   }
 
   private createReadStream() {
-    return fs.createReadStream(this.relativePath);
+    return fs.createReadStream(this.absolutePath);
   }
 }
 

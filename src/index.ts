@@ -121,7 +121,7 @@ async function worker(task: Task, done: async.ErrorCallback) {
     return done();
   }
   try {
-    const entry = await Entry.create(relativePath, finder, dirent);
+    const entry = await Entry.create(rootPath, relativePath, finder, dirent);
     const status = await entry.synchronize(pretend);
     switch (status) {
       case ResultStatus.DOWNLOADED:
