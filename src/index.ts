@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import async from 'async';
-import BoxSDK from 'box-node-sdk';
 import fs from 'fs';
 import minimist from 'minimist';
 import ora from 'ora';
@@ -10,7 +9,7 @@ import progress from 'progress';
 import { Writable } from 'stream';
 import util from 'util';
 import { createDirentFromStats, Entry, listDirectoryEntriesRecursively, ResultStatus } from './app';
-import { BoxFinder } from './box';
+import { BoxFinder, createBoxClient } from './box';
 
 // tslint:disable-next-line: no-var-requires
 const npmPackage = require('../package.json');
@@ -58,16 +57,7 @@ const spinner = ora({
 (async () => {
   try {
     const appConfig = process.env.BOX_APP_CONFIG && JSON.parse(fs.readFileSync(process.env.BOX_APP_CONFIG).toString());
-    const client = ((params: { appConfig?: object, token?: string }) => {
-      if (params.token) { return BoxSDK.getBasicClient(params.token); }
-
-      const sdk = BoxSDK.getPreconfiguredInstance(appConfig);
-      return sdk.getAppAuthClient('enterprise');
-    })({ appConfig, token: args.token });
-    if (args['as-user']) {
-      client.asUser(args['as-user']);
-    }
-
+    const client = createBoxClient(args.token || appConfig, { asUser: args['as-user'] });
     const q = async.queue(worker, concurrency);
     const finder = await BoxFinder.create(client, destination);
     let count = 0;

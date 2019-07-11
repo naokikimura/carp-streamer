@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
-import { BoxAPIResponseError, BoxFinder, isBoxAPIResponseError } from './box';
+import { BoxFinder, isResponseError, ResponseError } from './box';
 import { INIT_RETRY_TIMES } from './config';
 import { sleep } from './util';
 
@@ -40,12 +40,12 @@ export abstract class Entry {
         return new File(rootPath, relativePath, finder, dirent, remoteFile);
       }
     } catch (error) {
-      if (!isBoxAPIResponseError(error)) { throw error; }
+      if (!isResponseError(error)) { throw error; }
       debug('API Response Error: %s', error.message);
       if (!(error.statusCode === 429 && retryTimes > 0)) { throw error; }
 
       debug('Retries %d more times.', retryTimes);
-      const retryAfter = determineDelayTime(error, retryTimes);
+      const retryAfter = determineDelayTime(retryTimes, error);
       debug('Tries again in %d milliseconds.', retryAfter);
       return this._create(rootPath, relativePath, finder, dirent, retryTimes - 1, retryAfter);
     }
@@ -64,20 +64,20 @@ export abstract class Entry {
     try {
       return await this.sync(pretend);
     } catch (error) {
-      if (!isBoxAPIResponseError(error)) { throw error; }
+      if (!isResponseError(error)) { throw error; }
       debug('API Response Error: %s', error.message);
       if (!(error.statusCode === 429 && retryTimes > 0)) { throw error; }
 
       debug('Retries %d more times.', retryTimes);
-      const retryAfter = determineDelayTime(error, retryTimes);
+      const retryAfter = determineDelayTime(retryTimes, error);
       debug('Tries again in %d milliseconds.', retryAfter);
       return this._synchronize(pretend, retryTimes - 1, retryAfter);
     }
   }
 }
 
-function determineDelayTime(error: BoxAPIResponseError, retryTimes: number): number {
-  const retryAfter = Number(error.response.headers['retry-after'] || 0);
+function determineDelayTime(retryTimes: number, error?: ResponseError): number {
+  const retryAfter = Number(error ? error.response.headers['retry-after'] || 0 : 0);
   return (retryAfter + Math.floor(Math.random() * 10 * (1 / retryTimes))) * 1000;
 }
 

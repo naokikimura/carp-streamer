@@ -7,13 +7,23 @@ import { sleep } from './util';
 
 const debug = util.debuglog('carp-streamer:box');
 
-export interface BoxAPIResponseError extends Error {
+export function createBoxClient(param: string | object, options: { asUser?: string } = {}): BoxSDK.BoxClient {
+  const client = typeof param === 'string'
+    ? BoxSDK.getBasicClient(param)
+    : BoxSDK.getPreconfiguredInstance(param).getAppAuthClient('enterprise');
+  if (options.asUser) {
+    client.asUser(options.asUser);
+  }
+  return client;
+}
+
+export interface ResponseError extends Error {
   statusCode: number;
   response: any;
   request: any;
 }
 
-export function isBoxAPIResponseError(error: any): error is BoxAPIResponseError {
+export function isResponseError(error: any): error is ResponseError {
   return error.statusCode && error.response && error.request && error instanceof Error;
 }
 
@@ -22,9 +32,14 @@ const isFolder = (item: BoxSDK.MiniFolder): item is BoxSDK.Folder => (item as Bo
 const isMiniFolder = (item: BoxSDK.Item): item is BoxSDK.MiniFolder => item.type === 'folder';
 
 export class BoxFinder {
-  public static async create(client: BoxSDK.BoxClient, folderId = '0') {
-    const folder = await client.folders.get(folderId);
-    return new BoxFinder(client, folder);
+  public static async create(client: BoxSDK.BoxClient, folderId: string = '0') {
+    const current = await client.folders.get(folderId);
+    return BoxFinder.new(client, current);
+  }
+
+  private static new(client: BoxSDK.BoxClient, folder: BoxSDK.MiniFolder) {
+    const finder = new BoxFinder(client, folder);
+    return finder;
   }
 
   private static async createFolderByPath(folderPath: string[], finder: BoxFinder): Promise<BoxSDK.Folder> {
@@ -72,7 +87,7 @@ export class BoxFinder {
   }
 
   private new(folder: BoxSDK.MiniFolder) {
-    return new BoxFinder(this.client, folder);
+    return BoxFinder.new(this.client, folder);
   }
 
   private async createFolder(folderName: string, retryTimes = INIT_RETRY_TIMES, delay = 0): Promise<BoxSDK.Folder> {
@@ -82,7 +97,7 @@ export class BoxFinder {
       return await this.client.folders.create(parentFolderId, folderName);
     } catch (error) {
       debug(`Failed to create folder '%s' (parent folder id: %s).`, folderName, parentFolderId);
-      if (!isBoxAPIResponseError(error)) {
+      if (!isResponseError(error)) {
         throw error;
       }
       debug('API Response Error: %s', error.message);
