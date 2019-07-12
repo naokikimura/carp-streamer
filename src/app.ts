@@ -17,28 +17,11 @@ export enum ResultStatus {
 
 const debug = util.debuglog('carp-streamer:app');
 
-export abstract class Entry {
-  get absolutePath() {
-    return path.resolve(this.rootPath, this.relativePath);
-  }
-
-  public static create(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent) {
-    return Entry._create(rootPath, relativePath, finder, dirent, INIT_RETRY_TIMES, 0);
-  }
-
-  private static async _create(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, retryTimes = INIT_RETRY_TIMES, delay = 0): Promise<Entry> {
+function retry(method: (...args: any) => Promise<any>, that: any, retryTimes = INIT_RETRY_TIMES, delay = 0): (...args: any) => Promise<any> {
+  return async (...args: any): Promise<any> =>  {
     await sleep(delay);
     try {
-      if (!dirent) {
-        // TODO:
-        throw new Error('Not Implemented Error');
-      } else if (dirent.isDirectory()) {
-        const remoteFolder = await finder.findFolderByPath(relativePath);
-        return new Directory(rootPath, relativePath, finder, dirent, remoteFolder);
-      } else {
-        const remoteFile = await finder.findFileByPath(relativePath);
-        return new File(rootPath, relativePath, finder, dirent, remoteFile);
-      }
+      return await Reflect.apply(method, that, args);
     } catch (error) {
       if (!isResponseError(error)) { throw error; }
       debug('API Response Error: %s', error.message);
@@ -47,38 +30,42 @@ export abstract class Entry {
       debug('Retries %d more times.', retryTimes);
       const retryAfter = determineDelayTime(retryTimes, error);
       debug('Tries again in %d milliseconds.', retryAfter);
-      return this._create(rootPath, relativePath, finder, dirent, retryTimes - 1, retryAfter);
+      debug('Retrying %s...', method.name);
+      return retry(method, that, retryTimes - 1, retryAfter)(...args);
+    }
+  };
+}
+
+function determineDelayTime(retryTimes: number, error?: ResponseError): number {
+  const retryAfter = Number(error ? error.response.headers['retry-after'] || 0 : 0);
+  return (retryAfter + Math.floor(Math.random() * 10 * (1 / retryTimes))) * 1000;
+}
+
+export abstract class Entry {
+  get absolutePath() {
+    return path.resolve(this.rootPath, this.relativePath);
+  }
+
+  public static async create(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent) {
+    if (!dirent) {
+      // TODO:
+      throw new Error('Not Implemented Error');
+    } else if (dirent.isDirectory()) {
+      const remoteFolder = await retry(finder.findFolderByPath, finder)(relativePath);
+      return new Directory(rootPath, relativePath, finder, dirent, remoteFolder);
+    } else {
+      const remoteFile = await retry(finder.findFileByPath, finder)(relativePath);
+      return new File(rootPath, relativePath, finder, dirent, remoteFile);
     }
   }
 
   constructor(private rootPath: string, readonly relativePath: string, protected finder: BoxFinder, protected dirent?: fs.Dirent) { }
 
   public synchronize(pretend: boolean = false) {
-    return this._synchronize(pretend);
+    return retry(this.sync, this)(pretend);
   }
 
   protected abstract sync(pretend: boolean): Promise<ResultStatus>;
-
-  private async _synchronize(pretend: boolean, retryTimes = INIT_RETRY_TIMES, delay = 0): Promise<ResultStatus> {
-    await sleep(delay);
-    try {
-      return await this.sync(pretend);
-    } catch (error) {
-      if (!isResponseError(error)) { throw error; }
-      debug('API Response Error: %s', error.message);
-      if (!(error.statusCode === 429 && retryTimes > 0)) { throw error; }
-
-      debug('Retries %d more times.', retryTimes);
-      const retryAfter = determineDelayTime(retryTimes, error);
-      debug('Tries again in %d milliseconds.', retryAfter);
-      return this._synchronize(pretend, retryTimes - 1, retryAfter);
-    }
-  }
-}
-
-function determineDelayTime(retryTimes: number, error?: ResponseError): number {
-  const retryAfter = Number(error ? error.response.headers['retry-after'] || 0 : 0);
-  return (retryAfter + Math.floor(Math.random() * 10 * (1 / retryTimes))) * 1000;
 }
 
 class Directory extends Entry {
