@@ -34,7 +34,7 @@ const isMiniFolder = (item: BoxSDK.Item): item is BoxSDK.MiniFolder => item.type
 
 export class BoxFinder {
   public static async create(client: BoxSDK.BoxClient, folderId = '0') {
-    const folders = BoxFinder.proxy(client.folders);
+    const folders = proxyToTrapTooManyRequests(client.folders);
     const current = await folders.get(folderId);
     return BoxFinder.new(client, current);
   }
@@ -42,16 +42,6 @@ export class BoxFinder {
   private static new(client: BoxSDK.BoxClient, folder: BoxSDK.MiniFolder) {
     return new BoxFinder(client, folder);
   }
-
-  private static proxy = <T extends object>(target: T): T => new Proxy(target, {
-    get: (subject: T, propertyKey, receiver) => {
-      const property = Reflect.get(subject, propertyKey, receiver);
-      if (property instanceof Function) {
-        return makeRetriable(property, subject);
-      }
-      return property;
-    }
-  })
 
   private static async createFolderByPath(folderPath: string[], finder: BoxFinder): Promise<BoxSDK.Folder> {
     if (folderPath.length === 0) {
@@ -79,8 +69,8 @@ export class BoxFinder {
   private folders: BoxSDK.Folders;
 
   private constructor(private client: BoxSDK.BoxClient, readonly current: BoxSDK.MiniFolder) {
-    this.files = BoxFinder.proxy(client.files);
-    this.folders = BoxFinder.proxy(client.folders);
+    this.files = proxyToTrapTooManyRequests(client.files);
+    this.folders = proxyToTrapTooManyRequests(client.folders);
   }
 
   public async createFolderUnlessItExists(relativePath: string) {
@@ -122,13 +112,9 @@ export class BoxFinder {
       return await this.folders.create(parentFolderId, folderName);
     } catch (error) {
       debug(`Failed to create folder '%s' (parent folder id: %s).`, folderName, parentFolderId);
-      if (!isResponseError(error)) {
-        throw error;
-      }
+      if (!isResponseError(error)) { throw error; }
       debug('API Response Error: %s', error.message);
-      if (!(error.statusCode === 409 && retryTimes > 0)) {
-        throw error;
-      }
+      if (!(error.statusCode === 409 && retryTimes > 0)) { throw error; }
       const folder = await this.findFolderByName(folderName);
       if (folder) {
         return this.folders.get(folder.id);
@@ -166,20 +152,17 @@ export class BoxFinder {
   }
 }
 
-export function makeRetriable<T>(method: (...args: any) => Promise<T>, that: any, retryTimes = INIT_RETRY_TIMES, delay = 0): (...args: any) => Promise<T> {
-  return async (...args: any): Promise<any> => {
+type asyncFn<T> = (...args: any) => Promise<T>;
+type retryCallback<T> =
+  (error: any, method: asyncFn<T>, that: any, args: any[], retryTimes: number, delay: number) => Promise<T>;
+
+function makeRetriable<T>(method: asyncFn<T>, that: any, callback: retryCallback<T>, retryTimes = INIT_RETRY_TIMES, delay = 0): asyncFn<T> {
+  return async (...args: any[]): Promise<T> => {
     await sleep(delay);
     try {
       return await Reflect.apply(method, that, args);
     } catch (error) {
-      if (!isResponseError(error)) { throw error; }
-      debug('API Response Error: %s', error.message);
-      if (!(error.statusCode === 429 && retryTimes > 0)) { throw error; }
-
-      debug('Retries %d more times.', retryTimes);
-      const retryAfter = determineDelayTime(retryTimes, error);
-      debug('Tries again in %d milliseconds.', retryAfter);
-      return makeRetriable(method, that, retryTimes - 1, retryAfter)(...args);
+      return callback(error, method, that, args, retryTimes, delay);
     }
   };
 }
@@ -187,4 +170,27 @@ export function makeRetriable<T>(method: (...args: any) => Promise<T>, that: any
 function determineDelayTime(retryTimes: number, error?: ResponseError): number {
   const retryAfter = Number(error ? error.response.headers['retry-after'] || 0 : 0);
   return (retryAfter + Math.floor(Math.random() * 10 * (1 / retryTimes))) * 1000;
+}
+
+function retryIfTooManyRequestsError<T>(error: any, method: asyncFn<T>, that: any, args: any[], retryTimes: number, delay: number): Promise<T> {
+  if (!isResponseError(error)) { throw error; }
+  debug('API Response Error: %s', error.message);
+  if (!(error.statusCode === 429 && retryTimes > 0)) { throw error; }
+
+  debug('Retries %d more times.', retryTimes);
+  const retryAfter = determineDelayTime(retryTimes, error);
+  debug('Tries again in %d milliseconds.', retryAfter);
+  return makeRetriable(method, that, retryIfTooManyRequestsError, retryTimes - 1, retryAfter)(...args);
+}
+
+function proxyToTrapTooManyRequests<T extends object>(target: T): T {
+  return new Proxy(target, {
+    get: (subject: T, propertyKey, receiver) => {
+      const property = Reflect.get(subject, propertyKey, receiver);
+      if (property instanceof Function) {
+        return makeRetriable(property, subject, retryIfTooManyRequestsError);
+      }
+      return property;
+    }
+  });
 }
