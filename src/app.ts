@@ -35,11 +35,7 @@ export abstract class Entry {
 
   constructor(private rootPath: string, readonly relativePath: string, protected finder: BoxFinder, protected dirent?: fs.Dirent) { }
 
-  public synchronize(pretend: boolean = false) {
-    return this.sync(pretend);
-  }
-
-  protected abstract sync(pretend: boolean): Promise<ResultStatus>;
+  public abstract synchronize(pretend?: boolean): Promise<ResultStatus>;
 }
 
 class Directory extends Entry {
@@ -47,7 +43,7 @@ class Directory extends Entry {
     super(rootPath, relativePath, finder, dirent);
   }
 
-  protected async sync(pretend: boolean = false): Promise<ResultStatus> {
+  public async synchronize(pretend: boolean = false) {
     if (this.remoteFolder) {
       return ResultStatus.SYNCHRONIZED;
     } else {
@@ -62,7 +58,7 @@ class File extends Entry {
     super(rootPath, relativePath, finder, dirent);
   }
 
-  protected async sync(pretend: boolean = false): Promise<ResultStatus> {
+  public async synchronize(pretend: boolean = false) {
     if (!this.dirent) {
       // client.files.getReadStream()
       return ResultStatus.DOWNLOADED;
