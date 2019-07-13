@@ -3,9 +3,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
-import { BoxFinder, isResponseError, ResponseError } from './box';
-import { INIT_RETRY_TIMES } from './config';
-import { sleep } from './util';
+import { BoxFinder, retry } from './box';
 
 export enum ResultStatus {
   DOWNLOADED,
@@ -16,30 +14,6 @@ export enum ResultStatus {
 }
 
 const debug = util.debuglog('carp-streamer:app');
-
-function retry(method: (...args: any) => Promise<any>, that: any, retryTimes = INIT_RETRY_TIMES, delay = 0): (...args: any) => Promise<any> {
-  return async (...args: any): Promise<any> =>  {
-    await sleep(delay);
-    try {
-      return await Reflect.apply(method, that, args);
-    } catch (error) {
-      if (!isResponseError(error)) { throw error; }
-      debug('API Response Error: %s', error.message);
-      if (!(error.statusCode === 429 && retryTimes > 0)) { throw error; }
-
-      debug('Retries %d more times.', retryTimes);
-      const retryAfter = determineDelayTime(retryTimes, error);
-      debug('Tries again in %d milliseconds.', retryAfter);
-      debug('Retrying %s...', method.name);
-      return retry(method, that, retryTimes - 1, retryAfter)(...args);
-    }
-  };
-}
-
-function determineDelayTime(retryTimes: number, error?: ResponseError): number {
-  const retryAfter = Number(error ? error.response.headers['retry-after'] || 0 : 0);
-  return (retryAfter + Math.floor(Math.random() * 10 * (1 / retryTimes))) * 1000;
-}
 
 export abstract class Entry {
   get absolutePath() {

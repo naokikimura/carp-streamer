@@ -32,14 +32,13 @@ const isFolder = (item: BoxSDK.MiniFolder): item is BoxSDK.Folder => (item as Bo
 const isMiniFolder = (item: BoxSDK.Item): item is BoxSDK.MiniFolder => item.type === 'folder';
 
 export class BoxFinder {
-  public static async create(client: BoxSDK.BoxClient, folderId: string = '0') {
+  public static async create(client: BoxSDK.BoxClient, folderId = '0') {
     const current = await client.folders.get(folderId);
     return BoxFinder.new(client, current);
   }
 
   private static new(client: BoxSDK.BoxClient, folder: BoxSDK.MiniFolder) {
-    const finder = new BoxFinder(client, folder);
-    return finder;
+    return new BoxFinder(client, folder);
   }
 
   private static async createFolderByPath(folderPath: string[], finder: BoxFinder): Promise<BoxSDK.Folder> {
@@ -139,4 +138,28 @@ export class BoxFinder {
       yield* this.fetchFolderItems(items.next_marker);
     }
   }
+}
+
+export function retry<T>(method: (...args: any) => Promise<T>, that: any, retryTimes = INIT_RETRY_TIMES, delay = 0): (...args: any) => Promise<T> {
+  return async (...args: any): Promise<any> =>  {
+    await sleep(delay);
+    try {
+      return await Reflect.apply(method, that, args);
+    } catch (error) {
+      if (!isResponseError(error)) { throw error; }
+      debug('API Response Error: %s', error.message);
+      if (!(error.statusCode === 429 && retryTimes > 0)) { throw error; }
+
+      debug('Retries %d more times.', retryTimes);
+      const retryAfter = determineDelayTime(retryTimes, error);
+      debug('Tries again in %d milliseconds.', retryAfter);
+      debug('Retrying %s...', method.name);
+      return retry(method, that, retryTimes - 1, retryAfter)(...args);
+    }
+  };
+}
+
+function determineDelayTime(retryTimes: number, error?: ResponseError): number {
+  const retryAfter = Number(error ? error.response.headers['retry-after'] || 0 : 0);
+  return (retryAfter + Math.floor(Math.random() * 10 * (1 / retryTimes))) * 1000;
 }
