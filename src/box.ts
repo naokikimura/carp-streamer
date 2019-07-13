@@ -18,13 +18,13 @@ export function createBoxClient(param: string | object, options: { asUser?: stri
   return client;
 }
 
-export interface ResponseError extends Error {
+interface ResponseError extends Error {
   statusCode: number;
   response: any;
   request: any;
 }
 
-export function isResponseError(error: any): error is ResponseError {
+function isResponseError(error: any): error is ResponseError {
   return error.statusCode && error.response && error.request && error instanceof Error;
 }
 
@@ -64,7 +64,7 @@ export class BoxFinder {
     return BoxFinder._findFolderByPath(folderPath.slice(1), subFolder && finder.new(subFolder));
   }
 
-  constructor(private client: BoxSDK.BoxClient, readonly current: BoxSDK.MiniFolder) {
+  private constructor(private client: BoxSDK.BoxClient, readonly current: BoxSDK.MiniFolder) {
   }
 
   public async createFolderUnlessItExists(relativePath: string) {
@@ -151,7 +151,7 @@ export class BoxFinder {
 }
 
 export function retry<T>(method: (...args: any) => Promise<T>, that: any, retryTimes = INIT_RETRY_TIMES, delay = 0): (...args: any) => Promise<T> {
-  return async (...args: any): Promise<any> =>  {
+  return async (...args: any): Promise<any> => {
     await sleep(delay);
     try {
       return await Reflect.apply(method, that, args);
