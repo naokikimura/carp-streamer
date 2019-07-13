@@ -86,14 +86,14 @@ export class BoxFinder {
   public async createFolderUnlessItExists(relativePath: string) {
     const dirs = !relativePath ? [] : relativePath.split(path.sep);
     const foundFolder = await BoxFinder._findFolderByPath(dirs, this);
-    return foundFolder || await BoxFinder.createFolderByPath(dirs, this);
+    return foundFolder || BoxFinder.createFolderByPath(dirs, this);
   }
 
   public async findFileByPath(relativePath: string) {
     const { dir, base } = path.parse(relativePath);
     const dirs = dir === '' ? [] : dir.split(path.sep);
     const folder = await BoxFinder._findFolderByPath(dirs, this);
-    return folder && await this.new(folder).findFileByName(base);
+    return folder && this.new(folder).findFileByName(base);
   }
 
   public findFolderByPath(relativePath: string) {
