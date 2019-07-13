@@ -118,8 +118,14 @@ export function createDirentFromStats(stats: fs.Stats, name: string): fs.Dirent 
   }();
 }
 
+interface Entity {
+  path: string;
+  dirent?: fs.Dirent;
+  error?: any;
+}
+
 const readdirAsync = util.promisify(fs.readdir);
-export async function* listDirectoryEntriesRecursively(root: string): AsyncIterableIterator<{ path: string, dirent?: fs.Dirent, error?: any }> {
+export async function* listDirectoryEntriesRecursively(root: string): AsyncIterableIterator<Entity> {
   try {
     for (const dirent of await readdirAsync(root, { withFileTypes: true })) {
       const entryPath = path.join(root, dirent.name);
