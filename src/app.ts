@@ -71,7 +71,7 @@ class File extends Entry {
         const { dir, base } = path.parse(this.relativePath);
         const folder = await this.finder.createFolderUnlessItExists(dir);
         debug('Uploading `%s`...', this.relativePath);
-        await this.finder.client.files.uploadFile(folder.id, base, this.createReadStream());
+        await this.finder.uploadFile(base, this.createReadStream(), folder);
       }
       return ResultStatus.UPLOADED;
     } else {
@@ -81,7 +81,7 @@ class File extends Entry {
       } else {
         if (!pretend) {
           debug('Upgrading `%s`...', this.relativePath);
-          await this.finder.client.files.uploadNewFileVersion(this.remoteFile.id, this.createReadStream());
+          await this.finder.uploadNewFileVersion(this.remoteFile, this.createReadStream());
         }
         return ResultStatus.UPGRADED;
       }

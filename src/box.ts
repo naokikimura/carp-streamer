@@ -1,4 +1,5 @@
 import BoxSDK from 'box-node-sdk';
+import { ReadStream } from 'fs';
 import _ from 'lodash';
 import path from 'path';
 import util from 'util';
@@ -63,7 +64,7 @@ export class BoxFinder {
     return BoxFinder._findFolderByPath(folderPath.slice(1), subFolder && finder.new(subFolder));
   }
 
-  constructor(readonly client: BoxSDK.BoxClient, readonly current: BoxSDK.MiniFolder) {
+  constructor(private client: BoxSDK.BoxClient, readonly current: BoxSDK.MiniFolder) {
   }
 
   public async createFolderUnlessItExists(relativePath: string) {
@@ -83,6 +84,15 @@ export class BoxFinder {
     const { dir, base } = path.parse(relativePath);
     const dirs = (dir === '' ? [] : dir.split(path.sep)).concat(base);
     return BoxFinder._findFolderByPath(dirs, this);
+  }
+
+  public uploadFile(base: string, stream: ReadStream, folder?: BoxSDK.MiniFolder) {
+    const folderId = (folder || this.current).id;
+    return this.client.files.uploadFile(folderId, base, stream);
+  }
+
+  public uploadNewFileVersion(file: BoxSDK.MiniFile, stream: ReadStream) {
+    return this.client.files.uploadNewFileVersion(file.id, stream);
   }
 
   private new(folder: BoxSDK.MiniFolder) {
