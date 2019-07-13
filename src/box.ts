@@ -34,13 +34,24 @@ const isMiniFolder = (item: BoxSDK.Item): item is BoxSDK.MiniFolder => item.type
 
 export class BoxFinder {
   public static async create(client: BoxSDK.BoxClient, folderId = '0') {
-    const current = await client.folders.get(folderId);
+    const folders = BoxFinder.proxy(client.folders);
+    const current = await folders.get(folderId);
     return BoxFinder.new(client, current);
   }
 
   private static new(client: BoxSDK.BoxClient, folder: BoxSDK.MiniFolder) {
     return new BoxFinder(client, folder);
   }
+
+  private static proxy = <T extends object>(target: T): T => new Proxy(target, {
+    get: (subject: T, propertyKey, receiver) => {
+      const property = Reflect.get(subject, propertyKey, receiver);
+      if (property instanceof Function) {
+        return makeRetriable(property, subject);
+      }
+      return property;
+    }
+  })
 
   private static async createFolderByPath(folderPath: string[], finder: BoxFinder): Promise<BoxSDK.Folder> {
     if (folderPath.length === 0) {
@@ -64,7 +75,12 @@ export class BoxFinder {
     return BoxFinder._findFolderByPath(folderPath.slice(1), subFolder && finder.new(subFolder));
   }
 
+  private files: BoxSDK.Files;
+  private folders: BoxSDK.Folders;
+
   private constructor(private client: BoxSDK.BoxClient, readonly current: BoxSDK.MiniFolder) {
+    this.files = BoxFinder.proxy(client.files);
+    this.folders = BoxFinder.proxy(client.folders);
   }
 
   public async createFolderUnlessItExists(relativePath: string) {
@@ -88,11 +104,11 @@ export class BoxFinder {
 
   public uploadFile(base: string, stream: ReadStream, folder?: BoxSDK.MiniFolder) {
     const folderId = (folder || this.current).id;
-    return this.client.files.uploadFile(folderId, base, stream);
+    return this.files.uploadFile(folderId, base, stream);
   }
 
   public uploadNewFileVersion(file: BoxSDK.MiniFile, stream: ReadStream) {
-    return this.client.files.uploadNewFileVersion(file.id, stream);
+    return this.files.uploadNewFileVersion(file.id, stream);
   }
 
   private new(folder: BoxSDK.MiniFolder) {
@@ -103,7 +119,7 @@ export class BoxFinder {
     const parentFolderId = this.current.id;
     await sleep(delay);
     try {
-      return await this.client.folders.create(parentFolderId, folderName);
+      return await this.folders.create(parentFolderId, folderName);
     } catch (error) {
       debug(`Failed to create folder '%s' (parent folder id: %s).`, folderName, parentFolderId);
       if (!isResponseError(error)) {
@@ -115,7 +131,7 @@ export class BoxFinder {
       }
       const folder = await this.findFolderByName(folderName);
       if (folder) {
-        return this.client.folders.get(folder.id);
+        return this.folders.get(folder.id);
       } else {
         const retryAfter = (Math.floor(Math.random() * 100) * (1 / retryTimes)) * 1000;
         debug(`Waiting time is %d milliseconds.`, retryAfter);
@@ -142,7 +158,7 @@ export class BoxFinder {
 
   private async *fetchFolderItems(marker?: string): AsyncIterableIterator<BoxSDK.Item> {
     const parentFolderId = this.current.id;
-    const items = await this.client.folders.getItems(parentFolderId, { usemarker: true, marker });
+    const items = await this.folders.getItems(parentFolderId, { usemarker: true, marker });
     yield* items.entries;
     if (items.next_marker) {
       yield* this.fetchFolderItems(items.next_marker);
@@ -150,7 +166,7 @@ export class BoxFinder {
   }
 }
 
-export function retry<T>(method: (...args: any) => Promise<T>, that: any, retryTimes = INIT_RETRY_TIMES, delay = 0): (...args: any) => Promise<T> {
+export function makeRetriable<T>(method: (...args: any) => Promise<T>, that: any, retryTimes = INIT_RETRY_TIMES, delay = 0): (...args: any) => Promise<T> {
   return async (...args: any): Promise<any> => {
     await sleep(delay);
     try {
@@ -163,8 +179,7 @@ export function retry<T>(method: (...args: any) => Promise<T>, that: any, retryT
       debug('Retries %d more times.', retryTimes);
       const retryAfter = determineDelayTime(retryTimes, error);
       debug('Tries again in %d milliseconds.', retryAfter);
-      debug('Retrying %s...', method.name);
-      return retry(method, that, retryTimes - 1, retryAfter)(...args);
+      return makeRetriable(method, that, retryTimes - 1, retryAfter)(...args);
     }
   };
 }

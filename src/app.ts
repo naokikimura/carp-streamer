@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
-import { BoxFinder, retry } from './box';
+import { BoxFinder } from './box';
 
 export enum ResultStatus {
   DOWNLOADED,
@@ -25,10 +25,10 @@ export abstract class Entry {
       // TODO:
       throw new Error('Not Implemented Error');
     } else if (dirent.isDirectory()) {
-      const remoteFolder = await retry(finder.findFolderByPath, finder)(relativePath);
+      const remoteFolder = await finder.findFolderByPath(relativePath);
       return new Directory(rootPath, relativePath, finder, dirent, remoteFolder);
     } else {
-      const remoteFile = await retry(finder.findFileByPath, finder)(relativePath);
+      const remoteFile = await finder.findFileByPath(relativePath);
       return new File(rootPath, relativePath, finder, dirent, remoteFile);
     }
   }
@@ -36,7 +36,7 @@ export abstract class Entry {
   constructor(private rootPath: string, readonly relativePath: string, protected finder: BoxFinder, protected dirent?: fs.Dirent) { }
 
   public synchronize(pretend: boolean = false) {
-    return retry(this.sync, this)(pretend);
+    return this.sync(pretend);
   }
 
   protected abstract sync(pretend: boolean): Promise<ResultStatus>;
