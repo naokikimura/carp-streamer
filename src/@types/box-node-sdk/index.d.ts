@@ -1,12 +1,55 @@
+
 declare module 'box-node-sdk' {
   import { ReadStream } from 'fs';
+  import { EventEmitter } from 'events';
 
-  export function getBasicClient(token: string): BoxClient;
+  interface BoxSDKNodeConstructor {
+    new(params: UserConfigurationOptions): BoxSDKNode
+    getBasicClient(accessToken: string): BoxClient;
+    getPreconfiguredInstance(appConfig: object): BoxSDKNode;
+    CURRENT_USER_ID: string;
+    readonly prototype: BoxSDKNode
+  }
 
-  export function getPreconfiguredInstance(appConfig: object): BoxSDKNode;
-
-  export interface BoxSDKNode {
+  interface BoxSDKNode extends EventEmitter {
+    config: Config;
     getAppAuthClient(type: string, id?: string, tokenStore?: TokenStore): BoxClient;
+    configure(parms: UserConfigurationOptions): void
+    getBasicClient(accessToken: string): BoxClient;
+    getPersistentClient(tokenInfo: TokenInfo, tokenStore?: TokenStore): BoxClient;
+    getAnonymousClient(): BoxClient;
+    CURRENT_USER_ID: string;
+  }
+
+  const BoxSDKNode: BoxSDKNodeConstructor;
+  export default BoxSDKNode;
+
+  export interface UserConfigurationOptions {
+    clientID: string;
+    clientSecret: string;
+    apiRootURL?: string;
+    uploadAPIRootURL?: string;
+    authorizeRootURL?: string;
+    uploadRequestTimeoutMS?: number;
+    retryIntervalMS?: number;
+    numMaxRetries?: number;
+    expiredBufferMS?: number;
+    request?: any;
+    appAuth?: AppAuthConfig;
+  }
+
+  export interface Config {
+    [key: string]: any;
+    extend(params: UserConfigurationOptions): Config;
+  }
+
+  export interface AppAuthConfig {
+    keyID: string;
+    privateKey: string | Buffer;
+    passphrase: string;
+    algorithm?: 'RS256' | 'RS384' | 'RS512';
+    expirationTime?: number;
+    verifyTimestamp?: boolean;
   }
 
   export interface TokenStore {
@@ -15,7 +58,8 @@ declare module 'box-node-sdk' {
     clear(callback: (err: Error | undefined, data: any) => void): void;
   }
 
-  export interface TokenInfo {}
+  export interface TokenInfo {
+  }
 
   export interface BoxClient {
     asUser(userId: string): void;
@@ -43,6 +87,7 @@ declare module 'box-node-sdk' {
   export interface Files {
     uploadFile(folderId: string, fileName: string, stream: ReadStream): Promise<File>;
     uploadNewFileVersion(fileId: string, stream: ReadStream): Promise<File>;
+    preflightUploadFile(parentFolderId: string, fileData?: any, options?: any): Promise<any>;
   }
 
   export interface Object {

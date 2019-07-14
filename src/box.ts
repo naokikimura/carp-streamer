@@ -1,4 +1,4 @@
-import BoxSDK from 'box-node-sdk';
+import BoxSDK, * as box from 'box-node-sdk';
 import { ReadStream } from 'fs';
 import _ from 'lodash';
 import path from 'path';
@@ -8,7 +8,7 @@ import { sleep } from './util';
 
 const debug = util.debuglog('carp-streamer:box');
 
-export function createBoxClient(param: string | object, options: { asUser?: string } = {}): BoxSDK.BoxClient {
+export function createBoxClient(param: string | object, options: { asUser?: string } = {}): box.BoxClient {
   const client = typeof param === 'string'
     ? BoxSDK.getBasicClient(param)
     : BoxSDK.getPreconfiguredInstance(param).getAppAuthClient('enterprise');
@@ -28,22 +28,22 @@ function isResponseError(error: any): error is ResponseError {
   return error.statusCode && error.response && error.request && error instanceof Error;
 }
 
-const isMiniFile = (item: BoxSDK.Item): item is BoxSDK.MiniFile => item.type === 'file';
-const isFolder = (item: BoxSDK.MiniFolder): item is BoxSDK.Folder => (item as BoxSDK.Folder).size !== undefined;
-const isMiniFolder = (item: BoxSDK.Item): item is BoxSDK.MiniFolder => item.type === 'folder';
+const isMiniFile = (item: box.Item): item is box.MiniFile => item.type === 'file';
+const isFolder = (item: box.MiniFolder): item is box.Folder => (item as box.Folder).size !== undefined;
+const isMiniFolder = (item: box.Item): item is box.MiniFolder => item.type === 'folder';
 
 export class BoxFinder {
-  public static async create(client: BoxSDK.BoxClient, folderId = '0') {
+  public static async create(client: box.BoxClient, folderId = '0') {
     const folders = proxyToTrapTooManyRequests(client.folders);
     const current = await folders.get(folderId);
     return BoxFinder.new(client, current);
   }
 
-  private static new(client: BoxSDK.BoxClient, folder: BoxSDK.MiniFolder) {
+  private static new(client: box.BoxClient, folder: box.MiniFolder) {
     return new BoxFinder(client, folder);
   }
 
-  private static async createFolderByPath(folderPath: string[], finder: BoxFinder): Promise<BoxSDK.Folder> {
+  private static async createFolderByPath(folderPath: string[], finder: BoxFinder): Promise<box.Folder> {
     if (folderPath.length === 0) {
       return isFolder(finder.current) ? finder.current : await finder.client.folders.get(finder.current.id);
     }
@@ -53,7 +53,7 @@ export class BoxFinder {
     return this.createFolderByPath(folderPath.slice(1), finder.new(folder));
   }
 
-  private static async _findFolderByPath(folderPath: string[], finder?: BoxFinder): Promise<BoxSDK.Folder | undefined> {
+  private static async _findFolderByPath(folderPath: string[], finder?: BoxFinder): Promise<box.Folder | undefined> {
     if (finder === undefined) {
       return undefined;
     }
@@ -65,7 +65,7 @@ export class BoxFinder {
     return BoxFinder._findFolderByPath(folderPath.slice(1), subFolder && finder.new(subFolder));
   }
 
-  private static async retryIfFolderConflictError(error: any, method: asyncFn<BoxSDK.Folder>, that: BoxFinder, args: any[], retryTimes: number): Promise<BoxSDK.Folder> {
+  private static retryIfFolderConflictError: RetryCallback<box.Folder, BoxFinder> = async (error, method, that, args, retryTimes) => {
     const [folderName] = args;
     debug(`Failed to create folder '%s' (parent folder id: %s).`, folderName, that.current.id);
     if (!isResponseError(error) || error.statusCode !== 409) { throw error; }
@@ -82,10 +82,10 @@ export class BoxFinder {
     }
   }
 
-  private files: BoxSDK.Files;
-  private folders: BoxSDK.Folders;
+  private files: box.Files;
+  private folders: box.Folders;
 
-  private constructor(private client: BoxSDK.BoxClient, readonly current: BoxSDK.MiniFolder) {
+  private constructor(private client: box.BoxClient, readonly current: box.MiniFolder) {
     this.files = proxyToTrapTooManyRequests(client.files);
     this.folders = proxyToTrapTooManyRequests(client.folders);
   }
@@ -109,33 +109,33 @@ export class BoxFinder {
     return BoxFinder._findFolderByPath(dirs, this);
   }
 
-  public uploadFile(base: string, stream: ReadStream, folder?: BoxSDK.MiniFolder) {
+  public uploadFile(base: string, stream: ReadStream, folder?: box.MiniFolder) {
     const folderId = (folder || this.current).id;
     return this.files.uploadFile(folderId, base, stream);
   }
 
-  public uploadNewFileVersion(file: BoxSDK.MiniFile, stream: ReadStream) {
+  public uploadNewFileVersion(file: box.MiniFile, stream: ReadStream) {
     return this.files.uploadNewFileVersion(file.id, stream);
   }
 
-  private new(folder: BoxSDK.MiniFolder) {
+  private new(folder: box.MiniFolder) {
     return BoxFinder.new(this.client, folder);
   }
 
-  private async createFolder(folderName: string): Promise<BoxSDK.Folder> {
+  private async createFolder(folderName: string): Promise<box.Folder> {
     const parentFolderId = this.current.id;
     return await this.folders.create(parentFolderId, folderName);
   }
 
   private findFileByName(fileName: string) {
-    return this.findItemByName<BoxSDK.MiniFile>(fileName, isMiniFile);
+    return this.findItemByName<box.MiniFile>(fileName, isMiniFile);
   }
 
   private findFolderByName(folderName: string) {
-    return this.findItemByName<BoxSDK.MiniFolder>(folderName, isMiniFolder);
+    return this.findItemByName<box.MiniFolder>(folderName, isMiniFolder);
   }
 
-  private async findItemByName<T extends BoxSDK.Item>(itemName: string, isItem: (item: BoxSDK.Item) => item is T): Promise<T | undefined> {
+  private async findItemByName<T extends box.Item>(itemName: string, isItem: (item: box.Item) => item is T): Promise<T | undefined> {
     for await (const item of this.fetchFolderItems()) {
       if (isItem(item) && item.name.normalize() === itemName.normalize()) {
         return item;
@@ -143,7 +143,7 @@ export class BoxFinder {
     }
   }
 
-  private async *fetchFolderItems(marker?: string): AsyncIterableIterator<BoxSDK.Item> {
+  private async *fetchFolderItems(marker?: string): AsyncIterableIterator<box.Item> {
     const parentFolderId = this.current.id;
     const items = await this.folders.getItems(parentFolderId, { usemarker: true, marker });
     yield* items.entries;
@@ -153,11 +153,11 @@ export class BoxFinder {
   }
 }
 
-type asyncFn<T> = (...args: any) => Promise<T>;
-type retryCallback<T> =
-  (error: any, method: asyncFn<T>, that: any, args: any[], retryTimes: number, delay: number) => Promise<T>;
+type asyncFn<T> = (...args: any[]) => Promise<T>;
+type RetryCallback<T, U> =
+  (error: any, method: asyncFn<T>, that: U, args: any[], retryTimes: number, delay: number) => Promise<T>;
 
-function makeRetriable<T>(method: asyncFn<T>, that: any, callback: retryCallback<T>, retryTimes = INIT_RETRY_TIMES, delay = 0): asyncFn<T> {
+function makeRetriable<T, U>(method: asyncFn<T>, that: U, callback: RetryCallback<T, U>, retryTimes = INIT_RETRY_TIMES, delay = 0): asyncFn<T> {
   return async (...args: any[]): Promise<T> => {
     await sleep(delay);
     try {
@@ -176,7 +176,7 @@ function determineDelayTime(retryTimes: number, error?: ResponseError): number {
   return (retryAfter + Math.floor(Math.random() * 10 * (1 / retryTimes))) * 1000;
 }
 
-function retryIfTooManyRequestsError<T>(error: any, method: asyncFn<T>, that: any, args: any[], retryTimes: number): Promise<T> {
+const retryIfTooManyRequestsError: RetryCallback<any, any> = (error, method, that, args, retryTimes) => {
   if (!isResponseError(error) || error.statusCode !== 429) { throw error; }
 
   debug('API Response Error: %s', error.message);
@@ -184,14 +184,14 @@ function retryIfTooManyRequestsError<T>(error: any, method: asyncFn<T>, that: an
   const retryAfter = determineDelayTime(retryTimes, error);
   debug('Tries again in %d milliseconds.', retryAfter);
   return makeRetriable(method, that, retryIfTooManyRequestsError, retryTimes - 1, retryAfter)(...args);
-}
+};
 
 function proxyToTrapTooManyRequests<T extends object>(target: T): T {
   return new Proxy(target, {
     get: (subject: T, propertyKey, receiver) => {
       const property = Reflect.get(subject, propertyKey, receiver);
       if (property instanceof Function) {
-        return makeRetriable(property, subject, retryIfTooManyRequestsError);
+        return makeRetriable<any, T>(property, subject, retryIfTooManyRequestsError);
       }
       return property;
     }

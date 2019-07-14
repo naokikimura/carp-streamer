@@ -1,4 +1,4 @@
-import BoxSDK from 'box-node-sdk';
+import * as box from 'box-node-sdk';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -39,7 +39,7 @@ export abstract class Entry {
 }
 
 class Directory extends Entry {
-  constructor(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, private remoteFolder?: BoxSDK.MiniFolder) {
+  constructor(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, private remoteFolder?: box.MiniFolder) {
     super(rootPath, relativePath, finder, dirent);
   }
 
@@ -54,7 +54,7 @@ class Directory extends Entry {
 }
 
 class File extends Entry {
-  constructor(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, private remoteFile?: BoxSDK.MiniFile) {
+  constructor(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, private remoteFile?: box.MiniFile) {
     super(rootPath, relativePath, finder, dirent);
   }
 
