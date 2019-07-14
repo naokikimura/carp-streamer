@@ -49,7 +49,7 @@ export class BoxFinder {
     }
     const folderName = _.first(folderPath) || '';
     const subFolder = await finder.findFolderByName(folderName);
-    const folder = subFolder || await finder.createFolder(folderName);
+    const folder = subFolder || await makeRetriable(finder.createFolder, finder, BoxFinder.retryIfFolderConflictError)(folderName);
     return this.createFolderByPath(folderPath.slice(1), finder.new(folder));
   }
 
@@ -63,6 +63,23 @@ export class BoxFinder {
     const folderName = _.first(folderPath) || '';
     const subFolder = await finder.findFolderByName(folderName);
     return BoxFinder._findFolderByPath(folderPath.slice(1), subFolder && finder.new(subFolder));
+  }
+
+  private static async retryIfFolderConflictError(error: any, method: asyncFn<BoxSDK.Folder>, that: BoxFinder, args: any[], retryTimes: number): Promise<BoxSDK.Folder> {
+    const [folderName] = args;
+    debug(`Failed to create folder '%s' (parent folder id: %s).`, folderName, that.current.id);
+    if (!isResponseError(error) || error.statusCode !== 409) { throw error; }
+
+    debug('API Response Error: %s', error.message);
+    const folder = await that.findFolderByName(folderName);
+    if (folder) {
+      return that.folders.get(folder.id);
+    } else {
+      debug('Retries %d more times.', retryTimes);
+      const retryAfter = determineDelayTime(retryTimes, error);
+      debug(`Waiting time is %d milliseconds.`, retryAfter);
+      return makeRetriable(method, that, BoxFinder.retryIfFolderConflictError, retryTimes - 1, retryAfter)(...args);
+    }
   }
 
   private files: BoxSDK.Files;
@@ -105,25 +122,9 @@ export class BoxFinder {
     return BoxFinder.new(this.client, folder);
   }
 
-  private async createFolder(folderName: string, retryTimes = INIT_RETRY_TIMES, delay = 0): Promise<BoxSDK.Folder> {
+  private async createFolder(folderName: string): Promise<BoxSDK.Folder> {
     const parentFolderId = this.current.id;
-    await sleep(delay);
-    try {
-      return await this.folders.create(parentFolderId, folderName);
-    } catch (error) {
-      debug(`Failed to create folder '%s' (parent folder id: %s).`, folderName, parentFolderId);
-      if (!isResponseError(error)) { throw error; }
-      debug('API Response Error: %s', error.message);
-      if (!(error.statusCode === 409 && retryTimes > 0)) { throw error; }
-      const folder = await this.findFolderByName(folderName);
-      if (folder) {
-        return this.folders.get(folder.id);
-      } else {
-        const retryAfter = (Math.floor(Math.random() * 100) * (1 / retryTimes)) * 1000;
-        debug(`Waiting time is %d milliseconds.`, retryAfter);
-        return this.createFolder(folderName, retryTimes - 1, retryAfter);
-      }
-    }
+    return await this.folders.create(parentFolderId, folderName);
   }
 
   private findFileByName(fileName: string) {
@@ -162,7 +163,10 @@ function makeRetriable<T>(method: asyncFn<T>, that: any, callback: retryCallback
     try {
       return await Reflect.apply(method, that, args);
     } catch (error) {
-      return callback(error, method, that, args, retryTimes, delay);
+      if (retryTimes > 0) {
+        return callback(error, method, that, args, retryTimes, delay);
+      }
+      throw error;
     }
   };
 }
@@ -172,11 +176,10 @@ function determineDelayTime(retryTimes: number, error?: ResponseError): number {
   return (retryAfter + Math.floor(Math.random() * 10 * (1 / retryTimes))) * 1000;
 }
 
-function retryIfTooManyRequestsError<T>(error: any, method: asyncFn<T>, that: any, args: any[], retryTimes: number, delay: number): Promise<T> {
-  if (!isResponseError(error)) { throw error; }
-  debug('API Response Error: %s', error.message);
-  if (!(error.statusCode === 429 && retryTimes > 0)) { throw error; }
+function retryIfTooManyRequestsError<T>(error: any, method: asyncFn<T>, that: any, args: any[], retryTimes: number): Promise<T> {
+  if (!isResponseError(error) || error.statusCode !== 429) { throw error; }
 
+  debug('API Response Error: %s', error.message);
   debug('Retries %d more times.', retryTimes);
   const retryAfter = determineDelayTime(retryTimes, error);
   debug('Tries again in %d milliseconds.', retryAfter);
