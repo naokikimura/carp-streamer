@@ -9,7 +9,7 @@ import progress from 'progress';
 import { Writable } from 'stream';
 import util from 'util';
 import { createDirentFromStats, Entry, listDirectoryEntriesRecursively, ResultStatus } from './app';
-import { BoxFinder, createBoxClient } from './box';
+import { BoxClientBuilder, BoxFinder } from './box';
 
 // tslint:disable-next-line: no-var-requires
 const npmPackage = require('../package.json');
@@ -57,7 +57,8 @@ const spinner = ora({
 (async () => {
   try {
     const appConfig = process.env.BOX_APP_CONFIG && JSON.parse(fs.readFileSync(process.env.BOX_APP_CONFIG).toString());
-    const client = createBoxClient(args.token || appConfig, { asUser: args['as-user'] });
+    const client = new BoxClientBuilder()
+      .setAppConfig(appConfig).setAccessToken(args.token).setAsUser(args['as-user']).build();
     const q = async.queue(worker, concurrency);
     const finder = await BoxFinder.create(client, destination);
     let count = 0;

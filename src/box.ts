@@ -8,14 +8,36 @@ import { sleep } from './util';
 
 const debug = util.debuglog('carp-streamer:box');
 
-export function createBoxClient(param: string | object, options: { asUser?: string } = {}): box.BoxClient {
-  const client = typeof param === 'string'
-    ? BoxSDK.getBasicClient(param)
-    : BoxSDK.getPreconfiguredInstance(param).getAppAuthClient('enterprise');
-  if (options.asUser) {
-    client.asUser(options.asUser);
+export class BoxClientBuilder {
+  private appConfig: { boxAppSettings: any } | undefined;
+  private accessToken: string | undefined;
+  private asUser: string | undefined;
+
+  public setAppConfig(appConfig: { boxAppSettings: any }) {
+    this.appConfig = appConfig;
+    return this;
   }
-  return client;
+
+  public setAccessToken(accessToken: string) {
+    this.accessToken = accessToken;
+    return this;
+  }
+
+  public setAsUser(asUser: string) {
+    this.asUser = asUser;
+    return this;
+  }
+
+  public build() {
+    const appConfig = this.appConfig || { boxAppSettings: { clientID: '', clientSecret: '' } };
+    const sdk = BoxSDK.getPreconfiguredInstance(appConfig);
+    const client = this.accessToken !== undefined
+      ? sdk.getBasicClient(this.accessToken) : sdk.getAppAuthClient('enterprise');
+    if (this.asUser) {
+      client.asUser(this.asUser);
+    }
+    return client;
+  }
 }
 
 interface ResponseError extends Error {
