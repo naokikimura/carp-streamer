@@ -76,7 +76,7 @@ declare module 'box-node-sdk' {
 
   export interface GetItemsOptions {
     fields?: string;
-    usemarker? : boolean;
+    usemarker?: boolean;
     marker?: string;
     offset?: number;
     sort?: string;
@@ -85,9 +85,9 @@ declare module 'box-node-sdk' {
   }
 
   export interface Files {
-    uploadFile(folderId: string, fileName: string, stream: ReadStream): Promise<File>;
+    uploadFile(folderId: string, fileName: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<File>;
     uploadNewFileVersion(fileId: string, stream: ReadStream): Promise<File>;
-    preflightUploadFile(parentFolderId: string, fileData?: any, options?: any): Promise<any>;
+    preflightUploadFile(parentFolderId: string, fileData?: { name: string, size?: number }, options?: any, callback?: Function): Promise<{ upload_url: string, upload_token: string | null }>;
   }
 
   export interface Object {
@@ -183,7 +183,7 @@ declare module 'box-node-sdk' {
     readonly url: string;
     readonly download_url: string;
     readonly vanity_url: string;
-    access : AccessLevel;
+    access: AccessLevel;
     effective_access: AccessLevel;
     unshared_at: DateTime;
     is_password_enabled: boolean;
