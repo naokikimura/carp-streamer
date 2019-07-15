@@ -206,4 +206,50 @@ declare module 'box-node-sdk' {
     type: 'file_version'
     sha1: string;
   }
+
+  interface RequestObject {
+    uri: any;
+    method: string;
+    headers: {
+      [key: string]: any;
+    };
+  }
+  
+  interface ResponseObject {
+    request: RequestObject;
+    statusCode: number;
+    headers: {
+      [key: string]: any;
+    };
+    body: ResponseBody | Buffer | string;
+  }
+  
+  interface ResponseBody {
+    [key: string]: any;
+    [key: number]: any;
+  }
+  
+  interface ErrorResponseObject extends ResponseObject {
+    body: ErrorResponseBody;
+  }
+  
+  interface ErrorResponseBody extends ResponseBody {
+    type: 'error';
+    status: number;
+    code: string;
+    context_info?: {
+      [key: string]: any;
+      [key: number]: any;
+      conflicts?: Item[];
+    };
+    help_url: string;
+    message: string;
+    request_id: string;
+  }
+  
+  export interface ResponseError extends Error {
+    statusCode: number;
+    response: ErrorResponseObject;
+    request: RequestObject | {};
+  }
 }

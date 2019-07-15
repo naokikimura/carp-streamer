@@ -40,59 +40,13 @@ export class BoxClientBuilder {
   }
 }
 
-interface RequestObject {
-  uri: any;
-  method: string;
-  headers: {
-    [key: string]: any;
-  };
-}
-
-interface ResponseObject {
-  request: RequestObject;
-  statusCode: number;
-  headers: {
-    [key: string]: any;
-  };
-  body: ResponseBody | Buffer | string;
-}
-
-interface ResponseBody {
-  [key: string]: any;
-  [key: number]: any;
-}
-
-interface ErrorResponseObject extends ResponseObject {
-  body: ErrorResponseBody;
-}
-
-interface ErrorResponseBody extends ResponseBody {
-  type: 'error';
-  status: number;
-  code: string;
-  context_info?: {
-    [key: string]: any;
-    [key: number]: any;
-    conflicts?: box.Item[];
-  };
-  help_url: string;
-  message: string;
-  request_id: string;
-}
-
-interface ResponseError extends Error {
-  statusCode: number;
-  response: ErrorResponseObject;
-  request: RequestObject | {};
-}
-
-function findConflictItem(error: ResponseError) {
+function findConflictItem(error: box.ResponseError) {
   if (error.statusCode === 409) {
     return _.first(error.response.body.context_info && error.response.body.context_info.conflicts);
   }
 }
 
-function isResponseError(error: any): error is ResponseError {
+function isResponseError(error: any): error is box.ResponseError {
   return error.statusCode && error.response && error.request && error instanceof Error;
 }
 
@@ -240,7 +194,7 @@ function makeRetriable<T, U>(method: asyncFn<T>, that: U, callback: RetryCallbac
   };
 }
 
-function determineDelayTime(retryTimes: number, error?: ResponseError): number {
+function determineDelayTime(retryTimes: number, error?: box.ResponseError): number {
   const retryAfter = Number(error ? error.response.headers['retry-after'] || 0 : 0);
   return (retryAfter + Math.floor(Math.random() * 10 * (1 / retryTimes))) * 1000;
 }
