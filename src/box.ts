@@ -40,10 +40,56 @@ export class BoxClientBuilder {
   }
 }
 
+interface RequestObject {
+  uri: any;
+  method: string;
+  headers: {
+    [key: string]: any;
+  };
+}
+
+interface ResponseObject {
+  request: RequestObject;
+  statusCode: number;
+  headers: {
+    [key: string]: any;
+  };
+  body: ResponseBody | Buffer | string;
+}
+
+interface ResponseBody {
+  [key: string]: any;
+  [key: number]: any;
+}
+
+interface ErrorResponseObject extends ResponseObject {
+  body: ErrorResponseBody;
+}
+
+interface ErrorResponseBody extends ResponseBody {
+  type: 'error';
+  status: number;
+  code: string;
+  context_info?: {
+    [key: string]: any;
+    [key: number]: any;
+    conflicts?: box.Item[];
+  };
+  help_url: string;
+  message: string;
+  request_id: string;
+}
+
 interface ResponseError extends Error {
   statusCode: number;
-  response: any;
-  request: any;
+  response: ErrorResponseObject;
+  request: RequestObject | {};
+}
+
+function findConflictItem(error: ResponseError) {
+  if (error.statusCode === 409) {
+    return _.first(error.response.body.context_info && error.response.body.context_info.conflicts);
+  }
 }
 
 function isResponseError(error: any): error is ResponseError {
@@ -93,9 +139,10 @@ export class BoxFinder {
     if (!isResponseError(error) || error.statusCode !== 409) { throw error; }
 
     debug('API Response Error: %s', error.message);
-    const folder = await that.findFolderByName(folderName);
-    if (folder) {
-      return that.folders.get(folder.id);
+    const item = findConflictItem(error);
+    if (item) {
+      debug('Found existing folder with that name: %s', item.name);
+      return that.folders.get(item.id);
     } else {
       debug('Retries %d more times.', retryTimes);
       const retryAfter = determineDelayTime(retryTimes, error);
