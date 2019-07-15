@@ -1,5 +1,5 @@
 import BoxSDK, * as box from 'box-node-sdk';
-import { ReadStream } from 'fs';
+import { ReadStream, Stats } from 'fs';
 import _ from 'lodash';
 import path from 'path';
 import util from 'util';
@@ -132,13 +132,22 @@ export class BoxFinder {
     return BoxFinder._findFolderByPath(dirs, this);
   }
 
-  public uploadFile(base: string, stream: ReadStream, folder?: box.MiniFolder) {
+  public async uploadFile(name: string, stream: ReadStream, stats?: Stats, folder?: box.MiniFolder) {
     const folderId = (folder || this.current).id;
-    return this.files.uploadFile(folderId, base, stream);
+    debug('uploading %s...', name);
+    const options = {
+      content_created_at: stats && toRFC3339String(stats.ctime),
+      content_modified_at: stats && toRFC3339String(stats.mtime),
+    };
+    return this.files.uploadFile(folderId, name, stream, options);
   }
 
-  public uploadNewFileVersion(file: box.MiniFile, stream: ReadStream) {
-    return this.files.uploadNewFileVersion(file.id, stream);
+  public uploadNewFileVersion(file: box.MiniFile, stream: ReadStream, stats?: Stats) {
+    const options = {
+      content_created_at: stats && toRFC3339String(stats.ctime),
+      content_modified_at: stats && toRFC3339String(stats.mtime),
+    };
+    return this.files.uploadNewFileVersion(file.id, stream, options);
   }
 
   private new(folder: box.MiniFolder) {
@@ -219,4 +228,8 @@ function proxyToTrapTooManyRequests<T extends object>(target: T): T {
       return property;
     }
   });
+}
+
+function toRFC3339String(date: Date) {
+  return date.toISOString().replace(/\.(\d{3})Z$/, 'Z');
 }

@@ -5,6 +5,9 @@ import path from 'path';
 import util from 'util';
 import { BoxFinder } from './box';
 
+const readdirAsync = util.promisify(fs.readdir);
+const statAsync = util.promisify(fs.stat);
+
 export enum ResultStatus {
   DOWNLOADED,
   SYNCHRONIZED,
@@ -62,12 +65,14 @@ class File extends Entry {
     if (!this.dirent) {
       // client.files.getReadStream()
       return ResultStatus.DOWNLOADED;
-    } else if (!this.remoteFile) {
+    }
+    const stats = await statAsync(this.absolutePath);
+    if (!this.remoteFile) {
       if (!pretend) {
         const { dir, base } = path.parse(this.relativePath);
         const folder = await this.finder.createFolderUnlessItExists(dir);
         debug('Uploading `%s`...', this.relativePath);
-        await this.finder.uploadFile(base, this.createReadStream(), folder);
+        await this.finder.uploadFile(base, this.createReadStream(), stats, folder);
       }
       return ResultStatus.UPLOADED;
     } else {
@@ -77,7 +82,7 @@ class File extends Entry {
       } else {
         if (!pretend) {
           debug('Upgrading `%s`...', this.relativePath);
-          await this.finder.uploadNewFileVersion(this.remoteFile, this.createReadStream());
+          await this.finder.uploadNewFileVersion(this.remoteFile, this.createReadStream(), stats);
         }
         return ResultStatus.UPGRADED;
       }
@@ -118,7 +123,6 @@ interface Entity {
   error?: any;
 }
 
-const readdirAsync = util.promisify(fs.readdir);
 export async function* listDirectoryEntriesRecursively(root: string): AsyncIterableIterator<Entity> {
   try {
     for (const dirent of await readdirAsync(root, { withFileTypes: true })) {
