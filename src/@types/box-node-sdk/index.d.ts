@@ -86,7 +86,7 @@ declare module 'box-node-sdk' {
 
   export interface Files {
     uploadFile(folderId: string, fileName: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<File>;
-    uploadNewFileVersion(fileId: string, stream: ReadStream): Promise<File>;
+    uploadNewFileVersion(fileId: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<File>;
     preflightUploadFile(parentFolderId: string, fileData?: { name: string, size?: number }, options?: any, callback?: Function): Promise<{ upload_url: string, upload_token: string | null }>;
   }
 
