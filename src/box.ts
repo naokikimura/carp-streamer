@@ -13,17 +13,17 @@ export class BoxClientBuilder {
   private accessToken: string | undefined;
   private asUser: string | undefined;
 
-  public setAppConfig(appConfig: { boxAppSettings: any }) {
+  public setAppConfig(appConfig?: { boxAppSettings: any }) {
     this.appConfig = appConfig;
     return this;
   }
 
-  public setAccessToken(accessToken: string) {
+  public setAccessToken(accessToken?: string) {
     this.accessToken = accessToken;
     return this;
   }
 
-  public setAsUser(asUser: string) {
+  public setAsUser(asUser?: string) {
     this.asUser = asUser;
     return this;
   }
@@ -134,6 +134,22 @@ export class BoxFinder {
 
   public async uploadFile(name: string, stream: ReadStream, stats?: Stats, folder?: box.MiniFolder) {
     const folderId = (folder || this.current).id;
+    try {
+      const result = await this.files.preflightUploadFile(folderId, { name, size: stats && stats.size });
+      debug('preflight Upload File: %o', result);
+    } catch (error) {
+      debug('preflight error: %s', error.message);
+      if (!isResponseError(error) || error.statusCode !== 409) { throw error; }
+
+      const item = findConflictItem(error);
+      if (item && isMiniFile(item)) {
+        debug('Found existing folder with that name: %s', item.name);
+        const finder = (folder ? this.new(folder) : this);
+        return finder.uploadNewFileVersion(item, stream);
+      } else {
+        throw error;
+      }
+    }
     debug('uploading %s...', name);
     const options = {
       content_created_at: stats && toRFC3339String(stats.ctime),
