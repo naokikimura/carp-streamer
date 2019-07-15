@@ -155,7 +155,12 @@ class File extends Entry {
         const { dir, base } = path.parse(this.relativePath);
         const folder = await this.finder.createFolderUnlessItExists(dir);
         debug('Uploading `%s`...', this.relativePath);
-        await this.finder.uploadFile(base, this.createReadStream(), stats, folder);
+        const stream = this.createReadStream();
+        return new Promise<SyncResultStatus>(async (resolve, reject) => {
+          stream.on('error', reject);
+          this.finder.uploadFile(base, stream, stats, folder)
+            .then(() => resolve(SyncResultStatus.UPLOADED)).catch(reject);
+        });
       }
       return SyncResultStatus.UPLOADED;
     } else {
@@ -164,8 +169,14 @@ class File extends Entry {
         return SyncResultStatus.SYNCHRONIZED;
       } else {
         if (!pretend) {
+          const remoteFile = this.remoteFile;
+          const stream = this.createReadStream();
           debug('Upgrading `%s`...', this.relativePath);
-          await this.finder.uploadNewFileVersion(this.remoteFile, this.createReadStream(), stats);
+          return new Promise<SyncResultStatus>(async (resolve, reject) => {
+            stream.on('error', reject);
+            this.finder.uploadNewFileVersion(remoteFile, stream, stats)
+              .then(() => resolve(SyncResultStatus.UPGRADED)).catch(reject);
+          });
         }
         return SyncResultStatus.UPGRADED;
       }
@@ -216,6 +227,7 @@ async function* listDirectoryEntriesRecursively(root: string): AsyncIterableIter
       }
     }
   } catch (error) {
+    debug('Oops! %s', error.message);
     yield { path: root, dirent: undefined, error };
   }
 }
