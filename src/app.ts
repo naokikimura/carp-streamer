@@ -155,7 +155,11 @@ class File extends Entry {
         const { dir, base } = path.parse(this.relativePath);
         const folder = await this.finder.createFolderUnlessItExists(dir);
         debug('Uploading `%s`...', this.relativePath);
-        await this.finder.uploadFile(base, this.absolutePath, stats, folder);
+        await new Promise<box.File>((resolve, reject) => {
+          const stream = this.createReadStream();
+          stream.once('error', reject);
+          this.finder.uploadFile(base, stream, stats, folder).then(resolve).catch(reject);
+        });
       }
       return SyncResultStatus.UPLOADED;
     } else {
@@ -165,7 +169,12 @@ class File extends Entry {
       } else {
         if (!pretend) {
           debug('Upgrading `%s`...', this.relativePath);
-          await this.finder.uploadNewFileVersion(this.remoteFile, this.absolutePath, stats);
+          const file = this.remoteFile;
+          await new Promise<box.File>((resolve, reject) => {
+            const stream = this.createReadStream();
+            stream.once('error', reject);
+            this.finder.uploadNewFileVersion(file, stream, stats).then(resolve).catch(reject);
+          });
         }
         return SyncResultStatus.UPGRADED;
       }
@@ -175,11 +184,15 @@ class File extends Entry {
   private digest() {
     return new Promise<string>((resolve, reject) => {
       const hash = crypto.createHash('sha1');
-      const stream = fs.createReadStream(this.absolutePath);
+      const stream = this.createReadStream();
       stream.on('data', chunk => hash.update(chunk));
       stream.once('close', () => resolve(hash.digest('hex')));
       stream.once('error', reject);
     });
+  }
+
+  private createReadStream() {
+    return fs.createReadStream(this.absolutePath);
   }
 }
 
