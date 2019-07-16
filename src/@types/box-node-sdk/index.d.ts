@@ -62,6 +62,7 @@ declare module 'box-node-sdk' {
   }
 
   export interface BoxClient {
+    setCustomHeader(header: string, value: any): void;
     asUser(userId: string): void;
     asSelf(): void;
     readonly folders: Folders;
@@ -69,6 +70,7 @@ declare module 'box-node-sdk' {
   }
 
   export interface Folders {
+    client: BoxClient;
     get(folderId: string): Promise<Folder>;
     getItems(folderId: string, options?: GetItemsOptions): Promise<Items>;
     create(folderId: string, folderName: string): Promise<Folder>;
@@ -84,13 +86,42 @@ declare module 'box-node-sdk' {
     limit?: number;
   }
 
-  export interface Files {
-    uploadFile(folderId: string, fileName: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<File>;
-    uploadNewFileVersion(fileId: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<File>;
-    preflightUploadFile(parentFolderId: string, fileData?: { name: string, size?: number }, options?: any, callback?: Function): Promise<{ upload_url: string, upload_token: string | null }>;
+  type FileData = { name: string, size?: number };
+  type PreflightResult = { upload_url: string, upload_token: string | null, download_url?: string | null };
+  interface UploadSessionInfo {
+    total_parts: number;
+    part_size: number;
+    session_endpoints: {
+      list_parts: string;
+      commit: string;
+      log_event: string;
+      upload_part: string;
+      status: string;
+      abort: string;
+    }
+    session_expires_at: string;
+    id: string;
+    type: string;
+    num_parts_processed: number;
   }
 
-  export interface Object {
+  class ChunkedUploader extends EventEmitter {
+    constructor(client: BoxClient, uploadSessionInfo: UploadSessionInfo, file: string | Buffer | ReadStream, size: number, options?: { parallelism?: number, retryInterval?: number, fileAttributes?: any });
+    abort(): Promise<void>;
+    start(): Promise<File>;
+  }
+
+  export interface Files {
+    client: BoxClient;
+    uploadFile(folderId: string, fileName: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<File>;
+    uploadNewFileVersion(fileId: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<File>;
+    preflightUploadFile(parentFolderId: string, fileData?: FileData, options?: any, callback?: Function): Promise<PreflightResult>;
+    preflightUploadNewFileVersion(fileID: string, fileData?: FileData, options?: any, callback?: Function): Promise<PreflightResult>;
+    getChunkedUploader(folderID: string, size: number, name: string, file: string | Buffer | ReadStream, options?: { parallelism?: number, retryInterval?: number, fileAttributes?: any }, callback?: Function): Promise<ChunkedUploader>;
+    getNewVersionChunkedUploader(fileID: string, size: number, file: string | Buffer | ReadStream, options?: { parallelism?: number, retryInterval?: number, fileAttributes?: any }, callback?: Function): Promise<ChunkedUploader>;
+  }
+
+  interface Object {
     type: string;
     id: string;
   }
