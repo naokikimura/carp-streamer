@@ -155,12 +155,7 @@ class File extends Entry {
         const { dir, base } = path.parse(this.relativePath);
         const folder = await this.finder.createFolderUnlessItExists(dir);
         debug('Uploading `%s`...', this.relativePath);
-        const stream = this.createReadStream();
-        return new Promise<SyncResultStatus>(async (resolve, reject) => {
-          stream.on('error', reject);
-          this.finder.uploadFile(base, stream, stats, folder)
-            .then(() => resolve(SyncResultStatus.UPLOADED)).catch(reject);
-        });
+        await this.finder.uploadFile(base, this.absolutePath, stats, folder);
       }
       return SyncResultStatus.UPLOADED;
     } else {
@@ -169,14 +164,8 @@ class File extends Entry {
         return SyncResultStatus.SYNCHRONIZED;
       } else {
         if (!pretend) {
-          const remoteFile = this.remoteFile;
-          const stream = this.createReadStream();
           debug('Upgrading `%s`...', this.relativePath);
-          return new Promise<SyncResultStatus>(async (resolve, reject) => {
-            stream.on('error', reject);
-            this.finder.uploadNewFileVersion(remoteFile, stream, stats)
-              .then(() => resolve(SyncResultStatus.UPGRADED)).catch(reject);
-          });
+          await this.finder.uploadNewFileVersion(this.remoteFile, this.absolutePath, stats);
         }
         return SyncResultStatus.UPGRADED;
       }

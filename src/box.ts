@@ -132,7 +132,7 @@ export class BoxFinder {
     return BoxFinder._findFolderByPath(dirs, this);
   }
 
-  public async uploadFile(name: string, stream: ReadStream, stats?: Stats, folder?: box.MiniFolder) {
+  public async uploadFile(name: string, content: string | Buffer | ReadStream, stats?: Stats, folder?: box.MiniFolder) {
     const folderId = (folder || this.current).id;
     try {
       const result = await this.files.preflightUploadFile(folderId, { name, size: stats && stats.size });
@@ -145,7 +145,7 @@ export class BoxFinder {
       if (item && isMiniFile(item)) {
         debug('Found existing folder with that name: %s', item.name);
         const finder = (folder ? this.new(folder) : this);
-        return finder.uploadNewFileVersion(item, stream);
+        return finder.uploadNewFileVersion(item, content, stats);
       } else {
         throw error;
       }
@@ -155,15 +155,15 @@ export class BoxFinder {
       content_created_at: stats && toRFC3339String(stats.ctime),
       content_modified_at: stats && toRFC3339String(stats.mtime),
     };
-    return this.files.uploadFile(folderId, name, stream, options);
+    return this.files.uploadFile(folderId, name, content, options);
   }
 
-  public uploadNewFileVersion(file: box.MiniFile, stream: ReadStream, stats?: Stats) {
+  public uploadNewFileVersion(file: box.MiniFile, content: string | Buffer | ReadStream, stats?: Stats) {
     const options = {
       content_created_at: stats && toRFC3339String(stats.ctime),
       content_modified_at: stats && toRFC3339String(stats.mtime),
     };
-    return this.files.uploadNewFileVersion(file.id, stream, options);
+    return this.files.uploadNewFileVersion(file.id, content, options);
   }
 
   private new(folder: box.MiniFolder) {
