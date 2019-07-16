@@ -140,11 +140,13 @@ export class BoxFinder {
     return this.files.uploadFile(folderId, name, content, options);
   }
 
-  public uploadNewFileVersion(file: box.MiniFile, content: string | Buffer | ReadStream, stats?: Stats) {
+  public async uploadNewFileVersion(file: box.MiniFile, content: string | Buffer | ReadStream, stats?: Stats) {
     const options = {
-      content_created_at: stats && toRFC3339String(stats.ctime),
       content_modified_at: stats && toRFC3339String(stats.mtime),
     };
+    const fileData = { name: file.name, size: stats && stats.size };
+    const result = await this.files.preflightUploadNewFileVersion(file.id, fileData);
+    debug('preflight Upload New File Version: %o', result);
     return this.files.uploadNewFileVersion(file.id, content, options);
   }
 
