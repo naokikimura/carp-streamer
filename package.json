@@ -43,7 +43,7 @@
   "dependencies": {
     "async": "^3.1.0",
     "box-node-sdk": "^1.29.0",
-    "lodash": "^4.17.12",
+    "lodash": "^4.17.14",
     "minimist": "^1.2.0",
     "ora": "^3.4.0",
     "progress": "^2.0.3"
