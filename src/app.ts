@@ -34,7 +34,7 @@ export class Synchronizer extends EventEmitter {
 
   public async synchronize(source: string, destination = '0', excludes: string[] = [], pretend = false) {
     const self = this;
-    const callback: async.AsyncResultCallback<SyncResult> = (error = null, result = { status: SyncResultStatus.UNKNOWN }) => {
+    const callback: async.AsyncResultCallback<SyncResult> = (error, result = { status: SyncResultStatus.UNKNOWN }) => {
       self.emit(SyncEventType.SYNCHRONIZE, error, result.absolutePath, result.status);
     };
     const finder = await BoxFinder.create(this.client, destination);
