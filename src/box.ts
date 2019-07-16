@@ -71,7 +71,7 @@ export class BoxFinder {
     }
     const folderName = _.first(folderPath) || '';
     const subFolder = await finder.findFolderByName(folderName);
-    const folder = subFolder || await makeRetriable(finder.createFolder, finder, BoxFinder.retryIfFolderConflictError)(folderName);
+    const folder = subFolder || await finder.createFolder(folderName);
     return this.createFolderByPath(folderPath.slice(1), finder.new(folder));
   }
 
@@ -85,24 +85,6 @@ export class BoxFinder {
     const folderName = _.first(folderPath) || '';
     const subFolder = await finder.findFolderByName(folderName);
     return BoxFinder._findFolderByPath(folderPath.slice(1), subFolder && finder.new(subFolder));
-  }
-
-  private static retryIfFolderConflictError: RetryCallback<box.Folder, BoxFinder> = async (error, method, that, args, retryTimes) => {
-    const [folderName] = args;
-    debug(`Failed to create folder '%s' (parent folder id: %s).`, folderName, that.current.id);
-    if (!isResponseError(error) || error.statusCode !== 409) { throw error; }
-
-    debug('API Response Error: %s', error.message);
-    const item = findConflictItem(error);
-    if (item) {
-      debug('Found existing folder with that name: %s', item.name);
-      return that.folders.get(item.id);
-    } else {
-      debug('Retries %d more times.', retryTimes);
-      const retryAfter = determineDelayTime(retryTimes, error);
-      debug(`Waiting time is %d milliseconds.`, retryAfter);
-      return makeRetriable(method, that, BoxFinder.retryIfFolderConflictError, retryTimes - 1, retryAfter)(...args);
-    }
   }
 
   private files: box.Files;
@@ -134,6 +116,10 @@ export class BoxFinder {
 
   public async uploadFile(name: string, content: string | Buffer | ReadStream, stats?: Stats, folder?: box.MiniFolder) {
     const folderId = (folder || this.current).id;
+    const options = {
+      content_created_at: stats && toRFC3339String(stats.ctime),
+      content_modified_at: stats && toRFC3339String(stats.mtime),
+    };
     try {
       const result = await this.files.preflightUploadFile(folderId, { name, size: stats && stats.size });
       debug('preflight Upload File: %o', result);
@@ -145,16 +131,12 @@ export class BoxFinder {
       if (item && isMiniFile(item)) {
         debug('Found existing folder with that name: %s', item.name);
         const finder = (folder ? this.new(folder) : this);
-        return finder.uploadNewFileVersion(item, content, stats);
+        return finder.files.uploadNewFileVersion(item.id, content, options);
       } else {
         throw error;
       }
     }
     debug('uploading %s...', name);
-    const options = {
-      content_created_at: stats && toRFC3339String(stats.ctime),
-      content_modified_at: stats && toRFC3339String(stats.mtime),
-    };
     return this.files.uploadFile(folderId, name, content, options);
   }
 
@@ -170,9 +152,9 @@ export class BoxFinder {
     return BoxFinder.new(this.client, folder);
   }
 
-  private async createFolder(folderName: string): Promise<box.Folder> {
+  private createFolder(folderName: string): Promise<box.Folder> {
     const parentFolderId = this.current.id;
-    return await this.folders.create(parentFolderId, folderName);
+    return makeRetriable(this.folders.create, this.folders, retryIfFolderConflictError)(parentFolderId, folderName);
   }
 
   private findFileByName(fileName: string) {
@@ -232,6 +214,24 @@ const retryIfTooManyRequestsError: RetryCallback<any, any> = (error, method, tha
   const retryAfter = determineDelayTime(retryTimes, error);
   debug('Tries again in %d milliseconds.', retryAfter);
   return makeRetriable(method, that, retryIfTooManyRequestsError, retryTimes - 1, retryAfter)(...args);
+};
+
+const retryIfFolderConflictError: RetryCallback<box.Folder, box.Folders> = async (error, method, that, args, retryTimes) => {
+  const [parentFolderId, folderName] = args;
+  debug(`Failed to create folder '%s' (parent folder id: %s).`, folderName, parentFolderId);
+  if (!isResponseError(error) || error.statusCode !== 409) { throw error; }
+
+  debug('API Response Error: %s', error.message);
+  const item = findConflictItem(error);
+  if (item) {
+    debug('Found existing folder with that name: %s', item.name);
+    return that.get(item.id);
+  } else {
+    debug('Retries %d more times.', retryTimes);
+    const retryAfter = determineDelayTime(retryTimes, error);
+    debug(`Waiting time is %d milliseconds.`, retryAfter);
+    return makeRetriable(method, that, retryIfFolderConflictError, retryTimes - 1, retryAfter)(...args);
+  }
 };
 
 function proxyToTrapTooManyRequests<T extends object>(target: T): T {
