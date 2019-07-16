@@ -175,15 +175,11 @@ class File extends Entry {
   private digest() {
     return new Promise<string>((resolve, reject) => {
       const hash = crypto.createHash('sha1');
-      const stream = this.createReadStream();
+      const stream = fs.createReadStream(this.absolutePath);
       stream.on('data', chunk => hash.update(chunk));
-      stream.on('close', () => resolve(hash.digest('hex')));
-      stream.on('error', reject);
+      stream.once('close', () => resolve(hash.digest('hex')));
+      stream.once('error', reject);
     });
-  }
-
-  private createReadStream() {
-    return fs.createReadStream(this.absolutePath);
   }
 }
 
