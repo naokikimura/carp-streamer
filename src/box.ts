@@ -74,6 +74,8 @@ export class BoxClientBuilder {
   }
 }
 
+const CHUNKED_UPLOAD_MINIMUM = 20_000_000;
+
 function findConflictItem(error: box.ResponseError) {
   if (error.statusCode === 409) {
     return _.first(error.response.body.context_info && error.response.body.context_info.conflicts);
@@ -165,13 +167,25 @@ export class BoxFinder {
       if (item && isMiniFile(item)) {
         debug('Found existing folder with that name: %s', item.name);
         const finder = (folder ? this.new(folder) : this);
-        return finder.files.uploadNewFileVersion(item.id, content, options);
+        return finder.uploadNewFileVersion(item, content, stats);
       } else {
         throw error;
       }
     }
     debug('uploading %s...', name);
-    return this.files.uploadFile(folderId, name, content, options);
+    if (stats && (stats.size >= CHUNKED_UPLOAD_MINIMUM)) {
+      const chunkedUploader = await this.files.getChunkedUploader(folderId, stats.size, name, content, { fileAttributes: options });
+      chunkedUploader
+        .on('chunkUploaded', (data: box.UploadPart) => {
+          debug('chunk uploaded: %s', data.part.size);
+        })
+        .on('uploadComplete', (uploadFile: box.File) => {
+          debug('upload complete: %s', uploadFile.name);
+        });
+      return chunkedUploader.start();
+    } else {
+      return this.files.uploadFile(folderId, name, content, options);
+    }
   }
 
   public async uploadNewFileVersion(file: box.MiniFile, content: string | Buffer | ReadStream, stats?: Stats) {
@@ -181,7 +195,19 @@ export class BoxFinder {
     const fileData = { name: file.name, size: stats && stats.size };
     const result = await this.files.preflightUploadNewFileVersion(file.id, fileData);
     debug('preflight Upload New File Version: %o', result);
-    return this.files.uploadNewFileVersion(file.id, content, options);
+    if (stats && (stats.size >= CHUNKED_UPLOAD_MINIMUM)) {
+      const chunkedUploader = await this.files.getNewVersionChunkedUploader(file.id, stats.size, content, { fileAttributes: options });
+      chunkedUploader
+        .on('chunkUploaded', (data: box.UploadPart) => {
+          debug('chunk uploaded: %s', data.part.size);
+        })
+        .on('uploadComplete', (uploadFile: box.File) => {
+          debug('upload complete: %s', uploadFile.name);
+        });
+      return chunkedUploader.start();
+    } else {
+      return this.files.uploadNewFileVersion(file.id, content, options);
+    }
   }
 
   private new(folder: box.MiniFolder) {
