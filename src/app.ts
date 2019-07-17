@@ -198,7 +198,9 @@ class File extends Entry {
 }
 
 function createDirentFromStats(stats: fs.Stats, name: string): fs.Dirent {
-  return new class extends fs.Dirent {
+  // tslint:disable-next-line: no-empty-interface
+  interface DirentLike extends fs.Dirent { }
+  return new class implements DirentLike {
     get name() { return name; }
     public isBlockDevice() { return stats.isBlockDevice(); }
     public isCharacterDevice() { return stats.isCharacterDevice(); }
