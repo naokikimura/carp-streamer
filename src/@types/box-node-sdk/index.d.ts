@@ -105,6 +105,15 @@ declare module 'box-node-sdk' {
     num_parts_processed: number;
   }
 
+  export interface UploadPart {
+    part: {
+      part_id: string;
+      offset: number;
+      size: number;
+      sha1: string;
+    };
+  }
+
   class ChunkedUploader extends EventEmitter {
     constructor(client: BoxClient, uploadSessionInfo: UploadSessionInfo, file: string | Buffer | ReadStream, size: number, options?: { parallelism?: number, retryInterval?: number, fileAttributes?: any });
     abort(): Promise<void>;
