@@ -101,7 +101,7 @@ export class BoxFinder {
 
   private static async createFolderByPath(folderPath: string[], finder: BoxFinder): Promise<box.Folder> {
     if (folderPath.length === 0) {
-      return isFolder(finder.current) ? finder.current : await finder.client.folders.get(finder.current.id);
+      return isFolder(finder.current) ? finder.current : await finder.folders.get(finder.current.id);
     }
     const folderName = _.first(folderPath) || '';
     const subFolder = await finder.findFolderByName(folderName);
@@ -114,7 +114,7 @@ export class BoxFinder {
       return undefined;
     }
     if (folderPath.length === 0) {
-      return isFolder(finder.current) ? finder.current : await finder.client.folders.get(finder.current.id);
+      return isFolder(finder.current) ? finder.current : await finder.folders.get(finder.current.id);
     }
     const folderName = _.first(folderPath) || '';
     const subFolder = await finder.findFolderByName(folderName);
