@@ -5,7 +5,7 @@ import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
-import { BoxClientBuilder, BoxFinder } from './box';
+import { BoxAppAuthClientConfig, BoxAppConfig, BoxBasicClientConfig, BoxClientBuilder, BoxFinder } from './box';
 
 const debug = util.debuglog('carp-streamer:app');
 
@@ -22,13 +22,14 @@ export class Synchronizer extends EventEmitter {
   private client: box.BoxClient;
   private q: async.AsyncQueue<Task>;
 
-  constructor(appConfig?: { boxAppSettings: any }, accessToken?: string, options?: { asUser: string }, concurrency: number = 0) {
+  constructor(appConfig?: BoxAppConfig, accessToken?: string, options?: { asUser: string }, concurrency: number = 0) {
     super();
-    this.client = new BoxClientBuilder()
-      .setAppConfig(appConfig)
-      .setAccessToken(accessToken)
-      .setAsUser(options && options.asUser)
-      .build();
+    const configurator = options && options.asUser
+      ? ((client: box.BoxClient) => client.asUser(options.asUser)) : undefined;
+    const clientConfig: BoxBasicClientConfig | BoxAppAuthClientConfig = accessToken
+      ? { kind: 'Basic', accessToken, configurator }
+      : { kind: 'AppAuth', type: 'enterprise', configurator};
+    this.client = new BoxClientBuilder(appConfig, clientConfig).build();
     this.q = async.queue<Task, SyncResult, Error>(worker, concurrency);
   }
 
