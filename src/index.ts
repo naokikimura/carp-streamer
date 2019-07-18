@@ -91,7 +91,7 @@ const spinner = ora({
             break;
           case SyncResultStatus.FAILURE:
             debug('%s: %s\n%s', error.name, error.message, error.stack);
-            spinner.fail(`Failed to synchronize '${absolutePath}'.`);
+            spinner.fail(`Failed to synchronize '${absolutePath}'. (${error.message})`);
             break;
           case SyncResultStatus.UNKNOWN:
           default:
