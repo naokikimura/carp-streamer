@@ -25,52 +25,66 @@ export interface BoxAppConfig {
   enterpriseID?: string;
 }
 
-export interface BoxClientConfig {
-  kind: 'Basic' | 'AppAuth' | 'Anonymous';
+interface BoxClientConfiguration {
+  kind: 'Basic' | 'Persistent' | 'AppAuth' | 'Anonymous';
   configurator?: (client: box.BoxClient) => void;
 }
 
-export interface BoxBasicClientConfig extends BoxClientConfig {
+interface BoxBasicClientConfig extends BoxClientConfiguration {
   kind: 'Basic';
   accessToken: string;
 }
 
-export interface BoxAppAuthClientConfig extends BoxClientConfig {
+interface BoxPersistentClientConfig extends BoxClientConfiguration {
+  kind: 'Persistent';
+  tokenInfo: box.TokenInfo;
+}
+
+interface BoxAppAuthClientConfig extends BoxClientConfiguration {
   kind: 'AppAuth';
   type: 'enterprise' | 'user';
   id?: string;
 }
 
-export interface BoxAnonymousClientConfig extends BoxClientConfig {
+interface BoxAnonymousClientConfig extends BoxClientConfiguration {
   kind: 'Anonymous';
 }
 
+export type BoxClientConfig = BoxBasicClientConfig | BoxPersistentClientConfig | BoxAppAuthClientConfig | BoxAnonymousClientConfig;
+
 const isBoxBasicClientConfig = (config: BoxClientConfig): config is BoxBasicClientConfig => config.kind === 'Basic';
+const isBoxPersistentClientConfig = (config: BoxClientConfig): config is BoxPersistentClientConfig => config.kind === 'Persistent';
 const isBoxAppAuthClientConfig = (config: BoxClientConfig): config is BoxAppAuthClientConfig => config.kind === 'AppAuth';
 const isBoxAnonymousClientConfig = (config: BoxClientConfig): config is BoxAnonymousClientConfig => config.kind === 'Anonymous';
 
 export class BoxClientBuilder {
+  private static build(sdk: BoxSDK, config: BoxClientConfig) {
+    const client = (() => {
+      if (isBoxBasicClientConfig(config)) {
+        return sdk.getBasicClient(config.accessToken);
+      } else if (isBoxPersistentClientConfig(config)) {
+        return sdk.getPersistentClient(config.tokenInfo);
+      } else if (isBoxAppAuthClientConfig(config)) {
+        return sdk.getAppAuthClient(config.type, config.id);
+      } else {
+        return sdk.getAnonymousClient();
+      }
+    })();
+    config.configurator && config.configurator(client);
+    return client;
+  }
+
   private sdk: BoxSDK;
   private config: BoxClientConfig;
+  private client: box.BoxClient | undefined;
 
-  constructor(appConfig: BoxAppConfig = { boxAppSettings: { clientID: '', clientSecret: '' } }, clientConfig: BoxBasicClientConfig | BoxAppAuthClientConfig | BoxAnonymousClientConfig = { kind: 'Anonymous' }) {
+  constructor(appConfig: BoxAppConfig = { boxAppSettings: { clientID: '', clientSecret: '' } }, clientConfig: BoxClientConfig = { kind: 'Anonymous' }) {
     this.sdk = BoxSDK.getPreconfiguredInstance(appConfig);
     this.config = clientConfig;
   }
 
   public build() {
-    let client;
-    if (isBoxBasicClientConfig(this.config)) {
-      client = this.sdk.getBasicClient(this.config.accessToken);
-    } else if (isBoxAppAuthClientConfig(this.config)) {
-      client = this.sdk.getAppAuthClient(this.config.type, this.config.id);
-    } else {
-      client = this.sdk.getAnonymousClient();
-    }
-    if (this.config.configurator) {
-      this.config.configurator(client);
-    }
-    return client;
+    return this.client || (this.client = BoxClientBuilder.build(this.sdk, this.config));
   }
 }
 
