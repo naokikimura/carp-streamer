@@ -59,6 +59,10 @@ declare module 'box-node-sdk' {
   }
 
   export interface TokenInfo {
+    accessToken: string;
+    refreshToken: string;
+    accessTokenTTLMS: number;
+    acquiredAtMS: number;
   }
 
   export interface BoxClient {
