@@ -34,15 +34,14 @@ export class Synchronizer extends EventEmitter {
   }
 
   public async synchronize(source: string, destination = '0', excludes: string[] = [], pretend = false) {
-    const self = this;
     const callback: async.AsyncResultCallback<SyncResult> = (error, result = { status: SyncResultStatus.UNKNOWN }) => {
-      self.emit(SyncEventType.SYNCHRONIZE, error, result.absolutePath, result.status);
+      this.emit(SyncEventType.SYNCHRONIZE, error, result.absolutePath, result.status);
     };
     const finder = await BoxFinder.create(this.client, destination);
     const stats = await statAsync(source);
     if (!stats.isDirectory()) {
       const { dir, base } = path.parse(source);
-      const entry = { path: source, dirent: createDirentFromStats(stats, base), error: null };
+      const entry = { path: source, dirent: createDirentFromStats(stats, base) };
       this.emit(SyncEventType.ENTER, source);
       this.q.push({ entry, rootPath: dir, finder, pretend, excludes }, callback);
       this.emit(SyncEventType.ENTERED, 1);
@@ -82,7 +81,7 @@ async function worker(task: Task, done: async.AsyncResultCallback<SyncResult>) {
     return done(null, { status: SyncResultStatus.EXCLUDED, absolutePath });
   }
   try {
-    const entry = await Entry.create(rootPath, relativePath, finder, dirent);
+    const entry = Entry.create(rootPath, relativePath, finder, dirent);
     const status = await entry.synchronize(pretend);
     done(null, { status, absolutePath });
   } catch (error) {
@@ -107,31 +106,26 @@ abstract class Entry {
     return path.resolve(this.rootPath, this.relativePath);
   }
 
-  public static async create(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent) {
+  public static create(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent) {
     if (!dirent) {
       // TODO:
       throw new Error('Not Implemented Error');
     } else if (dirent.isDirectory()) {
-      const remoteFolder = await finder.findFolderByPath(relativePath);
-      return new Directory(rootPath, relativePath, finder, dirent, remoteFolder);
+      return new Directory(rootPath, relativePath, finder);
     } else {
-      const remoteFile = await finder.findFileByPath(relativePath);
-      return new File(rootPath, relativePath, finder, dirent, remoteFile);
+      return new File(rootPath, relativePath, finder);
     }
   }
 
-  constructor(private rootPath: string, readonly relativePath: string, protected finder: BoxFinder, protected dirent?: fs.Dirent) { }
+  constructor(private rootPath: string, readonly relativePath: string, protected finder: BoxFinder) { }
 
   public abstract synchronize(pretend?: boolean): Promise<SyncResultStatus>;
 }
 
 class Directory extends Entry {
-  constructor(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, private remoteFolder?: box.MiniFolder) {
-    super(rootPath, relativePath, finder, dirent);
-  }
-
   public async synchronize(pretend: boolean = false) {
-    if (this.remoteFolder) {
+    const remoteFolder = await this.finder.findFolderByPath(this.relativePath);
+    if (remoteFolder) {
       return SyncResultStatus.SYNCHRONIZED;
     } else {
       if (!pretend) { await this.finder.createFolderUnlessItExists(this.relativePath); }
@@ -141,17 +135,10 @@ class Directory extends Entry {
 }
 
 class File extends Entry {
-  constructor(rootPath: string, relativePath: string, finder: BoxFinder, dirent?: fs.Dirent, private remoteFile?: box.MiniFile) {
-    super(rootPath, relativePath, finder, dirent);
-  }
-
   public async synchronize(pretend: boolean = false) {
-    if (!this.dirent) {
-      // client.files.getReadStream()
-      return SyncResultStatus.DOWNLOADED;
-    }
     const stats = await statAsync(this.absolutePath);
-    if (!this.remoteFile) {
+    const remoteFile = await this.finder.findFileByPath(this.relativePath);
+    if (!remoteFile) {
       if (!pretend) {
         const { dir, base } = path.parse(this.relativePath);
         const folder = await this.finder.createFolderUnlessItExists(dir);
@@ -165,16 +152,15 @@ class File extends Entry {
       return SyncResultStatus.UPLOADED;
     } else {
       const sha1 = await this.digest();
-      if (sha1 === this.remoteFile.sha1) {
+      if (sha1 === remoteFile.sha1) {
         return SyncResultStatus.SYNCHRONIZED;
       } else {
         if (!pretend) {
           debug('Upgrading `%s`...', this.relativePath);
-          const file = this.remoteFile;
           await new Promise<box.File>((resolve, reject) => {
             const stream = this.createReadStream();
             stream.once('error', reject);
-            this.finder.uploadNewFileVersion(file, stream, stats).then(resolve).catch(reject);
+            this.finder.uploadNewFileVersion(remoteFile, stream, stats).then(resolve).catch(reject);
           });
         }
         return SyncResultStatus.UPGRADED;
@@ -222,13 +208,13 @@ async function* listDirectoryEntriesRecursively(root: string): AsyncIterableIter
   try {
     for (const dirent of await readdirAsync(root, { withFileTypes: true })) {
       const entryPath = path.join(root, dirent.name);
-      yield ({ path: entryPath, dirent, error: null });
+      yield ({ path: entryPath, dirent });
       if (dirent.isDirectory()) {
         yield* listDirectoryEntriesRecursively(entryPath);
       }
     }
   } catch (error) {
     debug('Oops! %s', error.message);
-    yield { path: root, dirent: undefined, error };
+    yield { path: root, error };
   }
 }
