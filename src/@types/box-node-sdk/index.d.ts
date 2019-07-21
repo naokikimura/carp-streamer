@@ -201,7 +201,11 @@ declare module 'box-node-sdk' {
     is_collaboration_restricted_to_enterprise: boolean;
     allowed_shared_link_access_levels: AccessLevel[];
     allowed_invitee_roles: string[];
-    watermark_info: any;
+    watermark_info: WatermarkInfo;
+  }
+
+  interface WatermarkInfo {
+    is_watermarked: boolean;
   }
 
   type SyncState = 'synced' | 'not_synced' | 'partially_synced';
@@ -244,11 +248,47 @@ declare module 'box-node-sdk' {
   }
 
   export interface File extends MiniFile {
+    description: string;
+    size: number;
+    path_collection: PathCollection;
+    created_at: DateTime;
+    modified_at: DateTime;
+    trashed_at: DateTime;
+    purged_at: DateTime;
+    content_created_at: DateTime;
+    content_modified_at: DateTime;
+    expires_at: DateTime;
+    created_by: MiniUser;
+    modified_by: MiniUser;
+    owned_by: MiniUser;
+    shared_link: SharedLink;
+    parent: MiniFolder;
+    item_status: ItemStatus;
+    version_number: string;
+    comment_count: number;
+    permissions: Permissions;
+    tags: string[];
+    lock: Lock | null;
+    extension: string;
+    is_package: boolean;
+    expiring_embed_link: string;
+    watermark_info: WatermarkInfo;
+    allowed_invitee_roles: string[];
+    is_externally_owned: boolean;
+    has_collaborations: boolean;
   }
 
   export interface MiniFileVersion extends Object {
     type: 'file_version'
     sha1: string;
+  }
+
+  export interface Lock extends Object {
+    type: 'lock'
+    created_by: MiniUser;
+    created_at: DateTime;
+    expires_at: DateTime;
+    is_download_prevented: boolean;
   }
 
   interface RequestObject {
