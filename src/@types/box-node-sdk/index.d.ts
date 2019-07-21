@@ -121,13 +121,13 @@ declare module 'box-node-sdk' {
   class ChunkedUploader extends EventEmitter {
     constructor(client: BoxClient, uploadSessionInfo: UploadSessionInfo, file: string | Buffer | ReadStream, size: number, options?: { parallelism?: number, retryInterval?: number, fileAttributes?: any });
     abort(): Promise<void>;
-    start(): Promise<File>;
+    start(): Promise<Items>;
   }
 
   export interface Files {
     client: BoxClient;
-    uploadFile(folderId: string, fileName: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<File>;
-    uploadNewFileVersion(fileId: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<File>;
+    uploadFile(folderId: string, fileName: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<Items>;
+    uploadNewFileVersion(fileId: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<Items>;
     preflightUploadFile(parentFolderId: string, fileData?: FileData, options?: any, callback?: Function): Promise<PreflightResult>;
     preflightUploadNewFileVersion(fileID: string, fileData?: FileData, options?: any, callback?: Function): Promise<PreflightResult>;
     getChunkedUploader(folderID: string, size: number, name: string, file: string | Buffer | ReadStream, options?: { parallelism?: number, retryInterval?: number, fileAttributes?: any }, callback?: Function): Promise<ChunkedUploader>;

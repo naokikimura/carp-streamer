@@ -143,7 +143,7 @@ class File extends Entry {
         const { dir, base } = path.parse(this.relativePath);
         const folder = await this.finder.createFolderUnlessItExists(dir);
         debug('Uploading `%s`...', this.relativePath);
-        await new Promise<box.File>((resolve, reject) => {
+        await new Promise<box.Items>((resolve, reject) => {
           const stream = this.createReadStream();
           stream.once('error', reject);
           this.finder.uploadFile(base, stream, stats, folder).then(resolve).catch(reject);
@@ -157,7 +157,7 @@ class File extends Entry {
       } else {
         if (!pretend) {
           debug('Upgrading `%s`...', this.relativePath);
-          await new Promise<box.File>((resolve, reject) => {
+          await new Promise<box.Items>((resolve, reject) => {
             const stream = this.createReadStream();
             stream.once('error', reject);
             this.finder.uploadNewFileVersion(remoteFile, stream, stats).then(resolve).catch(reject);
