@@ -198,9 +198,9 @@ export class BoxFinder {
         .on('uploadComplete', (uploadFile: box.File) => {
           debug('upload complete: %s', uploadFile.name);
         });
-      return chunkedUploader.start();
+      return chunkedUploader.start().then(cacheItems(this.cache));
     } else {
-      return this.files.uploadFile(folderId, name, content, options);
+      return this.files.uploadFile(folderId, name, content, options).then(cacheItems(this.cache));
     }
   }
 
@@ -220,9 +220,9 @@ export class BoxFinder {
         .on('uploadComplete', (uploadFile: box.File) => {
           debug('upload complete: %s', uploadFile.name);
         });
-      return chunkedUploader.start();
+      return chunkedUploader.start().then(cacheItems(this.cache));
     } else {
-      return this.files.uploadNewFileVersion(file.id, content, options);
+      return this.files.uploadNewFileVersion(file.id, content, options).then(cacheItems(this.cache));
     }
   }
 
@@ -232,7 +232,7 @@ export class BoxFinder {
 
   private createFolder(folderName: string, parentFolder: box.MiniFolder = this.current): Promise<box.Folder> {
     const parentFolderId = parentFolder.id;
-    return makeRetriable(this.folders.create, this.folders, retryIfFolderConflictError)(parentFolderId, folderName);
+    return makeRetriable(this.folders.create, this.folders, retryIfFolderConflictError)(parentFolderId, folderName).then(cacheItem(this.cache));
   }
 
   private findFileByName(fileName: string, parentFolder: box.MiniFolder = this.current) {
@@ -245,6 +245,13 @@ export class BoxFinder {
 
   private async findItemByName<T extends box.Item>(itemName: string, isItem: (item: box.Item) => item is T, parentFolder: box.MiniFolder = this.current): Promise<T | undefined> {
     const filter = (item: T) => item.name.normalize() === itemName.normalize();
+    const cachedItem = _.first((this.cache.get(parentFolder.id) || []).filter(isItem).filter(filter));
+    if (cachedItem) {
+      debug('%s has hit the cache.', cachedItem.name);
+      return cachedItem;
+    } else {
+      debug('%s was not found in the cache.', itemName);
+    }
     for await (const item of this.fetchFolderItems(parentFolder)) {
       if (isItem(item) && filter(item)) {
         return item;
@@ -255,12 +262,27 @@ export class BoxFinder {
   private async *fetchFolderItems(parentFolder: box.MiniFolder = this.current, marker?: string): AsyncIterableIterator<box.Item> {
     const parentFolderId = parentFolder.id;
     const items = await this.folders.getItems(parentFolderId, { usemarker: true, marker });
+    const cachedItems = marker ? this.cache.get(parentFolderId) || [] : [];
+    this.cache.set(parentFolderId, cachedItems.concat(items.entries));
     yield* items.entries;
     if (items.next_marker) {
       yield* this.fetchFolderItems(parentFolder, items.next_marker);
     }
   }
 }
+
+const cacheItems = _.curry((cache: LRUCache<string, box.Item[]>, newItems: box.Items) => {
+  newItems.entries.forEach(cacheItem(cache));
+  return newItems;
+});
+
+const cacheItem = _.curry(<T extends box.File | box.Folder>(cache: LRUCache<string, box.Item[]>, newItem: T) => {
+  debug('new %s: %o', isMiniFile(newItem) ? 'file' : isMiniFolder(newItem) ? 'folder' : 'item', newItem);
+  const parentFolderId = newItem.parent.id;
+  const cachedItems = cache.get(parentFolderId) || [];
+  cache.set(parentFolderId, _.unionWith([newItem], cachedItems, (a, b) => a.type === b.type && a.id === b.id));
+  return newItem;
+});
 
 type asyncFn<T, U extends any[]> = (...args: U) => Promise<T>;
 type RetryCallback<T, U extends any[], V> =
