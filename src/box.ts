@@ -125,7 +125,7 @@ export class BoxFinder {
     return this.createFolderByPath(folderPath.slice(1), finder.new(folder));
   }
 
-  private static async _findFolderByPath(folderPath: string[], finder?: BoxFinder): Promise<box.Folder | undefined> {
+  private static async findFolderByPath(folderPath: string[], finder?: BoxFinder): Promise<box.Folder | undefined> {
     if (finder === undefined) {
       return undefined;
     }
@@ -134,7 +134,7 @@ export class BoxFinder {
     }
     const folderName = _.first(folderPath) || '';
     const subFolder = await finder.findFolderByName(folderName);
-    return BoxFinder._findFolderByPath(folderPath.slice(1), subFolder && finder.new(subFolder));
+    return BoxFinder.findFolderByPath(folderPath.slice(1), subFolder && finder.new(subFolder));
   }
 
   private files: box.Files;
@@ -147,21 +147,21 @@ export class BoxFinder {
 
   public async createFolderUnlessItExists(relativePath: string) {
     const dirs = !relativePath ? [] : relativePath.split(path.sep);
-    const foundFolder = await BoxFinder._findFolderByPath(dirs, this);
+    const foundFolder = await BoxFinder.findFolderByPath(dirs, this);
     return foundFolder || BoxFinder.createFolderByPath(dirs, this);
   }
 
   public async findFileByPath(relativePath: string) {
     const { dir, base } = path.parse(relativePath);
     const dirs = dir === '' ? [] : dir.split(path.sep);
-    const folder = await BoxFinder._findFolderByPath(dirs, this);
-    return folder && this.new(folder).findFileByName(base);
+    const folder = await BoxFinder.findFolderByPath(dirs, this);
+    return folder && this.findFileByName(base, folder);
   }
 
   public findFolderByPath(relativePath: string) {
     const { dir, base } = path.parse(relativePath);
     const dirs = (dir === '' ? [] : dir.split(path.sep)).concat(base);
-    return BoxFinder._findFolderByPath(dirs, this);
+    return BoxFinder.findFolderByPath(dirs, this);
   }
 
   public async uploadFile(name: string, content: string | Buffer | ReadStream, stats?: Stats, folder?: box.MiniFolder) {
@@ -228,43 +228,44 @@ export class BoxFinder {
     return BoxFinder.new(this.client, folder);
   }
 
-  private createFolder(folderName: string): Promise<box.Folder> {
-    const parentFolderId = this.current.id;
+  private createFolder(folderName: string, parentFolder: box.MiniFolder = this.current): Promise<box.Folder> {
+    const parentFolderId = parentFolder.id;
     return makeRetriable(this.folders.create, this.folders, retryIfFolderConflictError)(parentFolderId, folderName);
   }
 
-  private findFileByName(fileName: string) {
-    return this.findItemByName<box.MiniFile>(fileName, isMiniFile);
+  private findFileByName(fileName: string, parentFolder: box.MiniFolder = this.current) {
+    return this.findItemByName<box.MiniFile>(fileName, isMiniFile, parentFolder);
   }
 
-  private findFolderByName(folderName: string) {
-    return this.findItemByName<box.MiniFolder>(folderName, isMiniFolder);
+  private findFolderByName(folderName: string, parentFolder: box.MiniFolder = this.current) {
+    return this.findItemByName<box.MiniFolder>(folderName, isMiniFolder, parentFolder);
   }
 
-  private async findItemByName<T extends box.Item>(itemName: string, isItem: (item: box.Item) => item is T): Promise<T | undefined> {
-    for await (const item of this.fetchFolderItems()) {
-      if (isItem(item) && item.name.normalize() === itemName.normalize()) {
+  private async findItemByName<T extends box.Item>(itemName: string, isItem: (item: box.Item) => item is T, parentFolder: box.MiniFolder = this.current): Promise<T | undefined> {
+    const filter = (item: T) => item.name.normalize() === itemName.normalize();
+    for await (const item of this.fetchFolderItems(parentFolder)) {
+      if (isItem(item) && filter(item)) {
         return item;
       }
     }
   }
 
-  private async *fetchFolderItems(marker?: string): AsyncIterableIterator<box.Item> {
-    const parentFolderId = this.current.id;
+  private async *fetchFolderItems(parentFolder: box.MiniFolder = this.current, marker?: string): AsyncIterableIterator<box.Item> {
+    const parentFolderId = parentFolder.id;
     const items = await this.folders.getItems(parentFolderId, { usemarker: true, marker });
     yield* items.entries;
     if (items.next_marker) {
-      yield* this.fetchFolderItems(items.next_marker);
+      yield* this.fetchFolderItems(parentFolder, items.next_marker);
     }
   }
 }
 
-type asyncFn<T> = (...args: any[]) => Promise<T>;
-type RetryCallback<T, U> =
-  (error: any, method: asyncFn<T>, that: U, args: any[], retryTimes: number, delay: number) => Promise<T>;
+type asyncFn<T, U extends any[]> = (...args: U) => Promise<T>;
+type RetryCallback<T, U extends any[], V> =
+  (error: any, method: asyncFn<T, U>, that: V, args: U, retryTimes: number, delay: number) => Promise<T>;
 
-function makeRetriable<T, U>(method: asyncFn<T>, that: U, callback: RetryCallback<T, U>, retryTimes = INIT_RETRY_TIMES, delay = 0): asyncFn<T> {
-  return async (...args: any[]): Promise<T> => {
+function makeRetriable<T, U extends any[], V>(method: asyncFn<T, U>, that: V, callback: RetryCallback<T, U, V>, retryTimes = INIT_RETRY_TIMES, delay = 0): asyncFn<T, U> {
+  return async (...args: U): Promise<T> => {
     await sleep(delay);
     try {
       return await Reflect.apply(method, that, args);
@@ -282,7 +283,7 @@ function determineDelayTime(retryTimes: number, error?: box.ResponseError): numb
   return (retryAfter + Math.floor(Math.random() * 10 * (1 / retryTimes))) * 1000;
 }
 
-const retryIfTooManyRequestsError: RetryCallback<any, any> = (error, method, that, args, retryTimes) => {
+const retryIfTooManyRequestsError: RetryCallback<any, any[], any> = (error, method, that, args, retryTimes) => {
   if (!isResponseError(error) || error.statusCode !== 429) { throw error; }
 
   debug('API Response Error: %s', error.message);
@@ -292,7 +293,7 @@ const retryIfTooManyRequestsError: RetryCallback<any, any> = (error, method, tha
   return makeRetriable(method, that, retryIfTooManyRequestsError, retryTimes - 1, retryAfter)(...args);
 };
 
-const retryIfFolderConflictError: RetryCallback<box.Folder, box.Folders> = async (error, method, that, args, retryTimes) => {
+const retryIfFolderConflictError: RetryCallback<box.Folder, [string, string], box.Folders> = async (error, method, that, args, retryTimes) => {
   const [parentFolderId, folderName] = args;
   debug(`Failed to create folder '%s' (parent folder id: %s).`, folderName, parentFolderId);
   if (!isResponseError(error) || error.statusCode !== 409) { throw error; }
@@ -315,7 +316,7 @@ function proxyToTrapTooManyRequests<T extends object>(target: T): T {
     get: (subject: T, propertyKey, receiver) => {
       const property = Reflect.get(subject, propertyKey, receiver);
       if (property instanceof Function) {
-        return makeRetriable<any, T>(property, subject, retryIfTooManyRequestsError);
+        return makeRetriable<any, any[], T>(property, subject, retryIfTooManyRequestsError);
       }
       return property;
     }
