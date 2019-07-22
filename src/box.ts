@@ -1,6 +1,8 @@
 import BoxSDK, * as box from 'box-node-sdk';
 import { ReadStream, Stats } from 'fs';
 import _ from 'lodash';
+import LRUCache from 'lru-cache';
+import sizeof from 'object-sizeof';
 import path from 'path';
 import util from 'util';
 import { INIT_RETRY_TIMES } from './config';
@@ -108,11 +110,11 @@ export class BoxFinder {
   public static async create(client: box.BoxClient, folderId = '0') {
     const folders = proxyToTrapTooManyRequests(client.folders);
     const current = await folders.get(folderId);
-    return BoxFinder.new(client, current);
+    return BoxFinder.new(client, current, new LRUCache({ max: 100_000_000, length: sizeof }));
   }
 
-  private static new(client: box.BoxClient, folder: box.MiniFolder) {
-    return new BoxFinder(client, folder);
+  private static new(client: box.BoxClient, folder: box.MiniFolder, cache: LRUCache<string, box.Item[]>) {
+    return new BoxFinder(client, folder, cache);
   }
 
   private static async createFolderByPath(folderPath: string[], finder: BoxFinder): Promise<box.Folder> {
@@ -140,7 +142,7 @@ export class BoxFinder {
   private files: box.Files;
   private folders: box.Folders;
 
-  private constructor(private client: box.BoxClient, readonly current: box.MiniFolder) {
+  private constructor(private client: box.BoxClient, readonly current: box.MiniFolder, private cache: LRUCache<string, box.Item[]>) {
     this.files = proxyToTrapTooManyRequests(client.files);
     this.folders = proxyToTrapTooManyRequests(client.folders);
   }
@@ -224,8 +226,8 @@ export class BoxFinder {
     }
   }
 
-  private new(folder: box.MiniFolder) {
-    return BoxFinder.new(this.client, folder);
+  private new(folder: box.MiniFolder, cache: LRUCache<string, box.Item[]> = this.cache) {
+    return BoxFinder.new(this.client, folder, cache);
   }
 
   private createFolder(folderName: string, parentFolder: box.MiniFolder = this.current): Promise<box.Folder> {
