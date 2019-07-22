@@ -4,6 +4,7 @@ import _ from 'lodash';
 import LRUCache from 'lru-cache';
 import sizeof from 'object-sizeof';
 import path from 'path';
+import url from 'url';
 import util from 'util';
 import { INIT_RETRY_TIMES } from './config';
 import { sleep } from './util';
@@ -248,7 +249,7 @@ export class BoxFinder {
     const cachedItem = _.first((this.cache.get(parentFolder.id) || []).filter(isItem).filter(filter));
     if (cachedItem) {
       debug('%s has hit the cache.', cachedItem.name);
-      return cachedItem;
+      return this.fetchItemWithCondition(cachedItem);
     } else {
       debug('%s was not found in the cache.', itemName);
     }
@@ -267,6 +268,29 @@ export class BoxFinder {
     yield* items.entries;
     if (items.next_marker) {
       yield* this.fetchFolderItems(parentFolder, items.next_marker);
+    }
+  }
+
+  private async fetchItemWithCondition<T extends box.Item>(item: T, options?: { fields?: string }) {
+    debug('condition get %s %s (etag: %s)', item.type, item.id, item.etag);
+    const basePath = url.resolve(isMiniFolder(item) ? '/folders/' : '/files/', item.id);
+    const params = {
+      headers: { 'IF-NONE-MATCH': item.etag },
+      qs: options,
+    };
+    try {
+      return await this.client.wrapWithDefaultHandler(this.client.get)<T>(basePath, params);
+    } catch (error) {
+      if (!isResponseError(error)) { throw error; }
+      debug('API Response Error: %s', error.message);
+      switch (error.statusCode) {
+        case 304:
+          return item;
+        case 404:
+          return undefined;
+        default:
+          throw error;
+      }
     }
   }
 }
