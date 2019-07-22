@@ -69,15 +69,17 @@ declare module 'box-node-sdk' {
     setCustomHeader(header: string, value: any): void;
     asUser(userId: string): void;
     asSelf(): void;
+    get<T>(path: string, params: any, callback?: (error: any, result: T) => void): Promise<T>;
+    wrapWithDefaultHandler<U extends any[], T>(method: (...args: U) => T): (...args: U) => T;
     readonly folders: Folders;
     readonly files: Files;
   }
 
   export interface Folders {
     client: BoxClient;
-    get(folderId: string): Promise<Folder>;
-    getItems(folderId: string, options?: GetItemsOptions): Promise<Items>;
-    create(folderId: string, folderName: string): Promise<Folder>;
+    get(folderId: string, options?: { fields?: string }, callback?: (error: any, folder: Folder | undefined) => void): Promise<Folder>;
+    getItems(folderId: string, options?: GetItemsOptions, callback?: (error: any, folder: Items | undefined) => void ): Promise<Items>;
+    create(folderId: string, folderName: string, callback?: (error: any, folder: Folder | undefined) => void): Promise<Folder>;
   }
 
   export interface GetItemsOptions {
@@ -126,6 +128,7 @@ declare module 'box-node-sdk' {
 
   export interface Files {
     client: BoxClient;
+    get(fileId: string, options?: { fields: string }, callback?: (error: any, file: File | undefined) => void): Promise<File>;
     uploadFile(folderId: string, fileName: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<Items>;
     uploadNewFileVersion(fileId: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<Items>;
     preflightUploadFile(parentFolderId: string, fileData?: FileData, options?: any, callback?: Function): Promise<PreflightResult>;
