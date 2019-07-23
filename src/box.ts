@@ -231,20 +231,21 @@ export class BoxFinder {
     return BoxFinder.new(this.client, folder, cache);
   }
 
-  private createFolder(folderName: string, parentFolder: box.MiniFolder = this.current): Promise<box.Folder> {
+  private createFolder(folderName: string, parentFolder = this.current): Promise<box.Folder> {
     const parentFolderId = parentFolder.id;
-    return makeRetriable(this.folders.create, this.folders, retryIfFolderConflictError)(parentFolderId, folderName).then(cacheItem(this.cache));
+    return makeRetriable(this.folders.create, this.folders, retryIfFolderConflictError)(parentFolderId, folderName)
+      .then(cacheItem(this.cache));
   }
 
-  private findFileByName(fileName: string, parentFolder: box.MiniFolder = this.current) {
+  private findFileByName(fileName: string, parentFolder = this.current) {
     return this.findItemByName<box.MiniFile>(fileName, isMiniFile, parentFolder);
   }
 
-  private findFolderByName(folderName: string, parentFolder: box.MiniFolder = this.current) {
+  private findFolderByName(folderName: string, parentFolder = this.current) {
     return this.findItemByName<box.MiniFolder>(folderName, isMiniFolder, parentFolder);
   }
 
-  private async findItemByName<T extends box.Item>(itemName: string, isItem: (item: box.Item) => item is T, parentFolder: box.MiniFolder = this.current): Promise<T | undefined> {
+  private async findItemByName<T extends box.Item>(itemName: string, isItem: (item: box.Item) => item is T, parentFolder = this.current) {
     const filter = (item: T) => item.name.normalize() === itemName.normalize();
     const cachedItem = _.first((this.cache.get(parentFolder.id) || []).filter(isItem).filter(filter));
     if (cachedItem) {
@@ -260,7 +261,7 @@ export class BoxFinder {
     }
   }
 
-  private async *fetchFolderItems(parentFolder: box.MiniFolder = this.current, marker?: string): AsyncIterableIterator<box.Item> {
+  private async *fetchFolderItems(parentFolder = this.current, marker?: string): AsyncIterableIterator<box.Item> {
     const parentFolderId = parentFolder.id;
     const items = await this.folders.getItems(parentFolderId, { usemarker: true, marker });
     const cachedItems = marker ? this.cache.get(parentFolderId) || [] : [];
@@ -295,18 +296,18 @@ export class BoxFinder {
   }
 }
 
-const cacheItems = _.curry((cache: LRUCache<string, box.Item[]>, newItems: box.Items) => {
+const cacheItems = (cache: LRUCache<string, box.Item[]>) => (newItems: box.Items<box.File>) => {
   newItems.entries.forEach(cacheItem(cache));
   return newItems;
-});
+};
 
-const cacheItem = _.curry(<T extends box.File | box.Folder>(cache: LRUCache<string, box.Item[]>, newItem: T) => {
+const cacheItem = <T extends box.File | box.Folder>(cache: LRUCache<string, box.Item[]>) => (newItem: T) => {
   debug('new %s: %o', isMiniFile(newItem) ? 'file' : isMiniFolder(newItem) ? 'folder' : 'item', newItem);
   const parentFolderId = newItem.parent.id;
   const cachedItems = cache.get(parentFolderId) || [];
   cache.set(parentFolderId, _.unionWith([newItem], cachedItems, (a, b) => a.type === b.type && a.id === b.id));
   return newItem;
-});
+};
 
 type asyncFn<T, U extends any[]> = (...args: U) => Promise<T>;
 type RetryCallback<T, U extends any[], V> =

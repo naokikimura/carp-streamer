@@ -78,7 +78,7 @@ declare module 'box-node-sdk' {
   export interface Folders {
     client: BoxClient;
     get(folderId: string, options?: { fields?: string }, callback?: (error: any, folder: Folder | undefined) => void): Promise<Folder>;
-    getItems(folderId: string, options?: GetItemsOptions, callback?: (error: any, folder: Items | undefined) => void ): Promise<Items>;
+    getItems(folderId: string, options?: GetItemsOptions, callback?: (error: any, folder: Items<Item> | undefined) => void ): Promise<Items<Item>>;
     create(folderId: string, folderName: string, callback?: (error: any, folder: Folder | undefined) => void): Promise<Folder>;
   }
 
@@ -123,14 +123,14 @@ declare module 'box-node-sdk' {
   class ChunkedUploader extends EventEmitter {
     constructor(client: BoxClient, uploadSessionInfo: UploadSessionInfo, file: string | Buffer | ReadStream, size: number, options?: { parallelism?: number, retryInterval?: number, fileAttributes?: any });
     abort(): Promise<void>;
-    start(): Promise<Items>;
+    start(): Promise<Items<File>>;
   }
 
   export interface Files {
     client: BoxClient;
     get(fileId: string, options?: { fields: string }, callback?: (error: any, file: File | undefined) => void): Promise<File>;
-    uploadFile(folderId: string, fileName: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<Items>;
-    uploadNewFileVersion(fileId: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<Items>;
+    uploadFile(folderId: string, fileName: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<Items<File>>;
+    uploadNewFileVersion(fileId: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<Items<File>>;
     preflightUploadFile(parentFolderId: string, fileData?: FileData, options?: any, callback?: Function): Promise<PreflightResult>;
     preflightUploadNewFileVersion(fileID: string, fileData?: FileData, options?: any, callback?: Function): Promise<PreflightResult>;
     getChunkedUploader(folderID: string, size: number, name: string, file: string | Buffer | ReadStream, options?: { parallelism?: number, retryInterval?: number, fileAttributes?: any }, callback?: Function): Promise<ChunkedUploader>;
@@ -149,11 +149,11 @@ declare module 'box-node-sdk' {
     etag: string | null;
   }
 
-  export interface Items {
+  export interface Items<T extends Item> {
     next_marker?: string;
     total_count?: number;
     offset?: number;
-    entries: Item[];
+    entries: T[];
     limit: number;
     order: Order[];
   }
@@ -194,7 +194,7 @@ declare module 'box-node-sdk' {
     folder_upload_email: { access: AccessLevel; email: string } | null;
     parent: MiniFolder;
     item_status: ItemStatus;
-    item_collection: Items;
+    item_collection: Items<Item>;
     sync_state: SyncState;
     has_collaborations: boolean;
     permissions: Permissions;
