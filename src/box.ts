@@ -107,15 +107,27 @@ const isMiniFile = (item: box.Item): item is box.MiniFile => item.type === 'file
 const isFolder = (item: box.MiniFolder): item is box.Folder => (item as box.Folder).size !== undefined;
 const isMiniFolder = (item: box.Item): item is box.MiniFolder => item.type === 'folder';
 
+export interface CacheConfig {
+  max?: number;
+  maxAge?: number;
+  disableCachedResponsesValidation?: boolean;
+}
+
 export class BoxFinder {
-  public static async create(client: box.BoxClient, folderId = '0') {
+  public static async create(client: box.BoxClient, folderId = '0', cacheConfig: CacheConfig = { max: 100_000_000 }) {
     const folders = proxyToTrapTooManyRequests(client.folders);
     const current = await folders.get(folderId);
-    return BoxFinder.new(client, current, new LRUCache({ max: 100_000_000, length: sizeof }));
+    const cacheOptions: LRUCache.Options<string, box.Item[]> = {
+      length: sizeof,
+      max: cacheConfig.max,
+      maxAge: cacheConfig.maxAge,
+      updateAgeOnGet: true
+    };
+    return BoxFinder.new(client, current, new LRUCache(cacheOptions), Boolean(cacheConfig.disableCachedResponsesValidation));
   }
 
-  private static new(client: box.BoxClient, folder: box.MiniFolder, cache: LRUCache<string, box.Item[]>) {
-    return new BoxFinder(client, folder, cache);
+  private static new(client: box.BoxClient, folder: box.MiniFolder, cache: LRUCache<string, box.Item[]>, disableCachedResponsesValidation: boolean) {
+    return new BoxFinder(client, folder, cache, disableCachedResponsesValidation);
   }
 
   private static async createFolderByPath(folderPath: string[], finder: BoxFinder): Promise<box.Folder> {
@@ -143,7 +155,7 @@ export class BoxFinder {
   private files: box.Files;
   private folders: box.Folders;
 
-  private constructor(private client: box.BoxClient, readonly current: box.MiniFolder, private cache: LRUCache<string, box.Item[]>) {
+  private constructor(private client: box.BoxClient, readonly current: box.MiniFolder, private cache: LRUCache<string, box.Item[]>, private disableCachedResponsesValidation: boolean) {
     this.files = proxyToTrapTooManyRequests(client.files);
     this.folders = proxyToTrapTooManyRequests(client.folders);
   }
@@ -227,8 +239,8 @@ export class BoxFinder {
     }
   }
 
-  private new(folder: box.MiniFolder, cache: LRUCache<string, box.Item[]> = this.cache) {
-    return BoxFinder.new(this.client, folder, cache);
+  private new(folder: box.MiniFolder, cache = this.cache, disableCachedResponsesValidation = this.disableCachedResponsesValidation) {
+    return BoxFinder.new(this.client, folder, cache, disableCachedResponsesValidation);
   }
 
   private createFolder(folderName: string, parentFolder = this.current): Promise<box.Folder> {
@@ -250,7 +262,9 @@ export class BoxFinder {
     const cachedItem = _.first((this.cache.get(parentFolder.id) || []).filter(isItem).filter(filter));
     if (cachedItem) {
       debug('%s has hit the cache.', cachedItem.name);
-      return this.fetchItemWithCondition(cachedItem);
+      return this.disableCachedResponsesValidation
+        ? cachedItem
+        : this.fetchItemWithCondition(cachedItem).then(item => item && isItem(item) ? item : undefined);
     } else {
       debug('%s was not found in the cache.', itemName);
     }
@@ -272,27 +286,27 @@ export class BoxFinder {
     }
   }
 
-  private async fetchItemWithCondition<T extends box.Item>(item: T, options?: { fields?: string }) {
+  private async fetchItemWithCondition<T extends box.Item, U extends box.File | box.Folder>(item: T, options?: { fields?: string }) {
     debug('condition get %s %s (etag: %s)', item.type, item.id, item.etag);
     const basePath = url.resolve(isMiniFolder(item) ? '/folders/' : '/files/', item.id);
     const params = {
       headers: { 'IF-NONE-MATCH': item.etag },
       qs: options,
     };
-    try {
-      return await this.client.wrapWithDefaultHandler(this.client.get)<T>(basePath, params);
-    } catch (error) {
-      if (!isResponseError(error)) { throw error; }
-      debug('API Response Error: %s', error.message);
-      switch (error.statusCode) {
-        case 304:
-          return item;
-        case 404:
-          return undefined;
-        default:
-          throw error;
-      }
-    }
+    return this.client.wrapWithDefaultHandler(this.client.get)<U>(basePath, params)
+      .then(cacheItem(this.cache))
+      .catch(error => {
+        if (!isResponseError(error)) { throw error; }
+        debug('API Response Error: %s', error.message);
+        switch (error.statusCode) {
+          case 304:
+            return item;
+          case 404:
+            return undefined;
+          default:
+            throw error;
+        }
+      });
   }
 }
 

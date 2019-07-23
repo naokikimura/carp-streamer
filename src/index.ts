@@ -15,9 +15,16 @@ const debug = util.debuglog(`${npmPackage.name}:index`);
 
 const argsOption = {
   alias: { t: 'token', v: 'version', c: 'concurrency' },
-  boolean: ['v', 'dry-run', 'progress'],
-  default: { 'dry-run': false, 'concurrency': 10, 'progress': false },
-  number: ['c'],
+  boolean: ['v', 'dry-run', 'progress', 'disable-cached-responses-validation'],
+  default: {
+    'cache-max-age': 1_000 * 60 * 60,
+    'cache-max-size': 100_000_000,
+    'concurrency': 10,
+    'disable-cached-responses-validation': false,
+    'dry-run': false,
+    'progress': false,
+  },
+  number: ['c', 'cache-max-size', 'cache-max-age'],
   string: ['t', 'as-user', 'exclude'],
 };
 const args = minimist(process.argv.slice(2), argsOption);
@@ -56,7 +63,12 @@ const spinner = ora({
   try {
     progressBar.total = 0;
     const appConfig = process.env.BOX_APP_CONFIG && JSON.parse(fs.readFileSync(process.env.BOX_APP_CONFIG).toString());
-    const synchronizer = new Synchronizer(appConfig, args.token, args['as-user'], concurrency);
+    const cacheConfig = {
+      disableCachedResponsesValidation: Boolean(args['disable-cached-responses-validation']),
+      max: Number(args['cache-max-size']),
+      maxAge: Number(args['cache-max-age']),
+    };
+    const synchronizer = new Synchronizer(appConfig, args.token, args['as-user'], concurrency, cacheConfig);
     synchronizer
       .on(SyncEventType.ENTER, absolutePath => {
         debug('found %s', absolutePath);
