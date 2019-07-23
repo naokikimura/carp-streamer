@@ -5,7 +5,7 @@ import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
-import { BoxAppConfig, BoxClientBuilder, BoxClientConfig, BoxFinder } from './box';
+import { BoxAppConfig, BoxClientBuilder, BoxClientConfig, BoxFinder, CacheConfig } from './box';
 
 const debug = util.debuglog('carp-streamer:app');
 
@@ -21,23 +21,25 @@ export enum SyncEventType {
 export class Synchronizer extends EventEmitter {
   private client: box.BoxClient;
   private q: async.AsyncQueue<Task>;
+  private cacheConfig: CacheConfig;
 
-  constructor(appConfig?: BoxAppConfig, accessToken?: string, options?: { asUser: string }, concurrency: number = 0) {
+  constructor(appConfig?: BoxAppConfig, accessToken?: string, options?: { asUser: string }, concurrency: number = 0, cacheConfig: CacheConfig = {}) {
     super();
     const configurator = options && options.asUser
       ? ((client: box.BoxClient) => client.asUser(options.asUser)) : undefined;
     const clientConfig: BoxClientConfig = accessToken
       ? { kind: 'Basic', accessToken, configurator }
-      : { kind: 'AppAuth', type: 'enterprise', configurator};
+      : { kind: 'AppAuth', type: 'enterprise', configurator };
     this.client = new BoxClientBuilder(appConfig, clientConfig).build();
     this.q = async.queue<Task, SyncResult, Error>(worker, concurrency);
+    this.cacheConfig = cacheConfig;
   }
 
   public async synchronize(source: string, destination = '0', excludes: string[] = [], pretend = false) {
     const callback: async.AsyncResultCallback<SyncResult> = (error, result = { status: SyncResultStatus.UNKNOWN }) => {
       this.emit(SyncEventType.SYNCHRONIZE, error, result.absolutePath, result.status);
     };
-    const finder = await BoxFinder.create(this.client, destination);
+    const finder = await BoxFinder.create(this.client, destination, this.cacheConfig);
     const stats = await statAsync(source);
     if (!stats.isDirectory()) {
       const { dir, base } = path.parse(source);
@@ -143,7 +145,7 @@ class File extends Entry {
         const { dir, base } = path.parse(this.relativePath);
         const folder = await this.finder.createFolderUnlessItExists(dir);
         debug('Uploading `%s`...', this.relativePath);
-        await new Promise<box.Items>((resolve, reject) => {
+        await new Promise<box.Items<box.File>>((resolve, reject) => {
           const stream = this.createReadStream();
           stream.once('error', reject);
           this.finder.uploadFile(base, stream, stats, folder).then(resolve).catch(reject);
@@ -157,7 +159,7 @@ class File extends Entry {
       } else {
         if (!pretend) {
           debug('Upgrading `%s`...', this.relativePath);
-          await new Promise<box.Items>((resolve, reject) => {
+          await new Promise<box.Items<box.File>>((resolve, reject) => {
             const stream = this.createReadStream();
             stream.once('error', reject);
             this.finder.uploadNewFileVersion(remoteFile, stream, stats).then(resolve).catch(reject);

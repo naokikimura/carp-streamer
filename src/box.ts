@@ -1,7 +1,10 @@
 import BoxSDK, * as box from 'box-node-sdk';
 import { ReadStream, Stats } from 'fs';
 import _ from 'lodash';
+import LRUCache from 'lru-cache';
+import sizeof from 'object-sizeof';
 import path from 'path';
+import url from 'url';
 import util from 'util';
 import { INIT_RETRY_TIMES } from './config';
 import { sleep } from './util';
@@ -104,15 +107,27 @@ const isMiniFile = (item: box.Item): item is box.MiniFile => item.type === 'file
 const isFolder = (item: box.MiniFolder): item is box.Folder => (item as box.Folder).size !== undefined;
 const isMiniFolder = (item: box.Item): item is box.MiniFolder => item.type === 'folder';
 
+export interface CacheConfig {
+  max?: number;
+  maxAge?: number;
+  disableCachedResponsesValidation?: boolean;
+}
+
 export class BoxFinder {
-  public static async create(client: box.BoxClient, folderId = '0') {
+  public static async create(client: box.BoxClient, folderId = '0', cacheConfig: CacheConfig = { max: 100_000_000 }) {
     const folders = proxyToTrapTooManyRequests(client.folders);
     const current = await folders.get(folderId);
-    return BoxFinder.new(client, current);
+    const cacheOptions: LRUCache.Options<string, box.Item[]> = {
+      length: sizeof,
+      max: cacheConfig.max,
+      maxAge: cacheConfig.maxAge,
+      updateAgeOnGet: true
+    };
+    return BoxFinder.new(client, current, new LRUCache(cacheOptions), Boolean(cacheConfig.disableCachedResponsesValidation));
   }
 
-  private static new(client: box.BoxClient, folder: box.MiniFolder) {
-    return new BoxFinder(client, folder);
+  private static new(client: box.BoxClient, folder: box.MiniFolder, cache: LRUCache<string, box.Item[]>, disableCachedResponsesValidation: boolean) {
+    return new BoxFinder(client, folder, cache, disableCachedResponsesValidation);
   }
 
   private static async createFolderByPath(folderPath: string[], finder: BoxFinder): Promise<box.Folder> {
@@ -140,7 +155,7 @@ export class BoxFinder {
   private files: box.Files;
   private folders: box.Folders;
 
-  private constructor(private client: box.BoxClient, readonly current: box.MiniFolder) {
+  private constructor(private client: box.BoxClient, readonly current: box.MiniFolder, private cache: LRUCache<string, box.Item[]>, private disableCachedResponsesValidation: boolean) {
     this.files = proxyToTrapTooManyRequests(client.files);
     this.folders = proxyToTrapTooManyRequests(client.folders);
   }
@@ -196,9 +211,9 @@ export class BoxFinder {
         .on('uploadComplete', (uploadFile: box.File) => {
           debug('upload complete: %s', uploadFile.name);
         });
-      return chunkedUploader.start();
+      return chunkedUploader.start().then(cacheItems(this.cache));
     } else {
-      return this.files.uploadFile(folderId, name, content, options);
+      return this.files.uploadFile(folderId, name, content, options).then(cacheItems(this.cache));
     }
   }
 
@@ -218,31 +233,41 @@ export class BoxFinder {
         .on('uploadComplete', (uploadFile: box.File) => {
           debug('upload complete: %s', uploadFile.name);
         });
-      return chunkedUploader.start();
+      return chunkedUploader.start().then(cacheItems(this.cache));
     } else {
-      return this.files.uploadNewFileVersion(file.id, content, options);
+      return this.files.uploadNewFileVersion(file.id, content, options).then(cacheItems(this.cache));
     }
   }
 
-  private new(folder: box.MiniFolder) {
-    return BoxFinder.new(this.client, folder);
+  private new(folder: box.MiniFolder, cache = this.cache, disableCachedResponsesValidation = this.disableCachedResponsesValidation) {
+    return BoxFinder.new(this.client, folder, cache, disableCachedResponsesValidation);
   }
 
-  private createFolder(folderName: string, parentFolder: box.MiniFolder = this.current): Promise<box.Folder> {
+  private createFolder(folderName: string, parentFolder = this.current): Promise<box.Folder> {
     const parentFolderId = parentFolder.id;
-    return makeRetriable(this.folders.create, this.folders, retryIfFolderConflictError)(parentFolderId, folderName);
+    return makeRetriable(this.folders.create, this.folders, retryIfFolderConflictError)(parentFolderId, folderName)
+      .then(cacheItem(this.cache));
   }
 
-  private findFileByName(fileName: string, parentFolder: box.MiniFolder = this.current) {
+  private findFileByName(fileName: string, parentFolder = this.current) {
     return this.findItemByName<box.MiniFile>(fileName, isMiniFile, parentFolder);
   }
 
-  private findFolderByName(folderName: string, parentFolder: box.MiniFolder = this.current) {
+  private findFolderByName(folderName: string, parentFolder = this.current) {
     return this.findItemByName<box.MiniFolder>(folderName, isMiniFolder, parentFolder);
   }
 
-  private async findItemByName<T extends box.Item>(itemName: string, isItem: (item: box.Item) => item is T, parentFolder: box.MiniFolder = this.current): Promise<T | undefined> {
+  private async findItemByName<T extends box.Item>(itemName: string, isItem: (item: box.Item) => item is T, parentFolder = this.current) {
     const filter = (item: T) => item.name.normalize() === itemName.normalize();
+    const cachedItem = _.first((this.cache.get(parentFolder.id) || []).filter(isItem).filter(filter));
+    if (cachedItem) {
+      debug('%s has hit the cache.', cachedItem.name);
+      return this.disableCachedResponsesValidation
+        ? cachedItem
+        : this.fetchItemWithCondition(cachedItem).then(item => item && isItem(item) ? item : undefined);
+    } else {
+      debug('%s was not found in the cache.', itemName);
+    }
     for await (const item of this.fetchFolderItems(parentFolder)) {
       if (isItem(item) && filter(item)) {
         return item;
@@ -250,15 +275,53 @@ export class BoxFinder {
     }
   }
 
-  private async *fetchFolderItems(parentFolder: box.MiniFolder = this.current, marker?: string): AsyncIterableIterator<box.Item> {
+  private async *fetchFolderItems(parentFolder = this.current, marker?: string): AsyncIterableIterator<box.Item> {
     const parentFolderId = parentFolder.id;
     const items = await this.folders.getItems(parentFolderId, { usemarker: true, marker });
+    const cachedItems = marker ? this.cache.get(parentFolderId) || [] : [];
+    this.cache.set(parentFolderId, cachedItems.concat(items.entries));
     yield* items.entries;
     if (items.next_marker) {
       yield* this.fetchFolderItems(parentFolder, items.next_marker);
     }
   }
+
+  private async fetchItemWithCondition<T extends box.Item, U extends box.File | box.Folder>(item: T, options?: { fields?: string }) {
+    debug('condition get %s %s (etag: %s)', item.type, item.id, item.etag);
+    const basePath = url.resolve(isMiniFolder(item) ? '/folders/' : '/files/', item.id);
+    const params = {
+      headers: { 'IF-NONE-MATCH': item.etag },
+      qs: options,
+    };
+    return this.client.wrapWithDefaultHandler(this.client.get)<U>(basePath, params)
+      .then(cacheItem(this.cache))
+      .catch(error => {
+        if (!isResponseError(error)) { throw error; }
+        debug('API Response Error: %s', error.message);
+        switch (error.statusCode) {
+          case 304:
+            return item;
+          case 404:
+            return undefined;
+          default:
+            throw error;
+        }
+      });
+  }
 }
+
+const cacheItems = (cache: LRUCache<string, box.Item[]>) => (newItems: box.Items<box.File>) => {
+  newItems.entries.forEach(cacheItem(cache));
+  return newItems;
+};
+
+const cacheItem = <T extends box.File | box.Folder>(cache: LRUCache<string, box.Item[]>) => (newItem: T) => {
+  debug('new %s: %o', isMiniFile(newItem) ? 'file' : isMiniFolder(newItem) ? 'folder' : 'item', newItem);
+  const parentFolderId = newItem.parent.id;
+  const cachedItems = cache.get(parentFolderId) || [];
+  cache.set(parentFolderId, _.unionWith([newItem], cachedItems, (a, b) => a.type === b.type && a.id === b.id));
+  return newItem;
+};
 
 type asyncFn<T, U extends any[]> = (...args: U) => Promise<T>;
 type RetryCallback<T, U extends any[], V> =

@@ -1,6 +1,6 @@
 {
   "name": "carp-streamer",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Carp streamer",
   "bin": "dist/index.js",
   "scripts": {
@@ -26,6 +26,7 @@
     "@types/async": "^3.0.0",
     "@types/chai": "^4.1.7",
     "@types/lodash": "^4.14.135",
+    "@types/lru-cache": "^5.1.0",
     "@types/minimist": "^1.2.0",
     "@types/mocha": "^5.2.7",
     "@types/node": "^12.0.10",
@@ -44,7 +45,9 @@
     "async": "^3.1.0",
     "box-node-sdk": "^1.29.0",
     "lodash": "^4.17.14",
+    "lru-cache": "^5.1.1",
     "minimist": "^1.2.0",
+    "object-sizeof": "^1.4.0",
     "ora": "^3.4.0",
     "progress": "^2.0.3"
   }
