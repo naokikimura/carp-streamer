@@ -1,9 +1,9 @@
 # carp-streamer
 
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/21b8e39de64044be9d70a36733a7e074)](https://app.codacy.com/app/naokikimura/carp-streamer?utm_source=github.com&utm_medium=referral&utm_content=naokikimura/carp-streamer&utm_campaign=Badge_Grade_Dashboard)
 [![npm version](https://badge.fury.io/js/carp-streamer.svg)](https://badge.fury.io/js/carp-streamer)
 [![Known Vulnerabilities](https://snyk.io//test/github/naokikimura/carp-streamer/badge.svg?targetFile=package.json)](https://snyk.io//test/github/naokikimura/carp-streamer?targetFile=package.json)
 [![CodeFactor](https://www.codefactor.io/repository/github/naokikimura/carp-streamer/badge/master)](https://www.codefactor.io/repository/github/naokikimura/carp-streamer/overview/master)
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/21b8e39de64044be9d70a36733a7e074)](https://app.codacy.com/app/naokikimura/carp-streamer?utm_source=github.com&utm_medium=referral&utm_content=naokikimura/carp-streamer&utm_campaign=Badge_Grade_Dashboard)
 
 `carp-streamer` is backup tool for files on local computer using Box Platform API.
 
