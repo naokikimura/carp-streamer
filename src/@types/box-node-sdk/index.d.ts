@@ -118,15 +118,17 @@ declare module 'box-node-sdk' {
     public start(): Promise<Items<File>>;
   }
 
+  type CallbackFn<T> = (error: any, result?: T) => void
+
   export interface Files {
     client: BoxClient;
-    get(fileId: string, options?: { fields: string }, callback?: (error: any, file: File | undefined) => void): Promise<File>;
-    uploadFile(folderId: string, fileName: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<Items<File>>;
-    uploadNewFileVersion(fileId: string, content: string | Buffer | ReadStream, options?: any, callback?: Function): Promise<Items<File>>;
-    preflightUploadFile(parentFolderId: string, fileData?: FileData, options?: any, callback?: Function): Promise<PreflightResult>;
-    preflightUploadNewFileVersion(fileID: string, fileData?: FileData, options?: any, callback?: Function): Promise<PreflightResult>;
-    getChunkedUploader(folderID: string, size: number, name: string, file: string | Buffer | ReadStream, options?: { parallelism?: number, retryInterval?: number, fileAttributes?: any }, callback?: Function): Promise<ChunkedUploader>;
-    getNewVersionChunkedUploader(fileID: string, size: number, file: string | Buffer | ReadStream, options?: { parallelism?: number, retryInterval?: number, fileAttributes?: any }, callback?: Function): Promise<ChunkedUploader>;
+    get(fileId: string, options?: { fields: string }, callback?: CallbackFn<File>): Promise<File>;
+    uploadFile(folderId: string, fileName: string, content: string | Buffer | ReadStream, options?: any, callback?: CallbackFn<Items<File>>): Promise<Items<File>>;
+    uploadNewFileVersion(fileId: string, content: string | Buffer | ReadStream, options?: any, callback?: CallbackFn<Items<File>>): Promise<Items<File>>;
+    preflightUploadFile(parentFolderId: string, fileData?: FileData, options?: any, callback?: CallbackFn<PreflightResult>): Promise<PreflightResult>;
+    preflightUploadNewFileVersion(fileID: string, fileData?: FileData, options?: any, callback?: CallbackFn<PreflightResult>): Promise<PreflightResult>;
+    getChunkedUploader(folderID: string, size: number, name: string, file: string | Buffer | ReadStream, options?: { parallelism?: number, retryInterval?: number, fileAttributes?: any }, callback?: CallbackFn<ChunkedUploader>): Promise<ChunkedUploader>;
+    getNewVersionChunkedUploader(fileID: string, size: number, file: string | Buffer | ReadStream, options?: { parallelism?: number, retryInterval?: number, fileAttributes?: any }, callback?: CallbackFn<ChunkedUploader>): Promise<ChunkedUploader>;
   }
 
   interface Object {
