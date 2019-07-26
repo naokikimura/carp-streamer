@@ -3,26 +3,18 @@ declare module 'box-node-sdk' {
   import { EventEmitter } from 'events';
   import { ReadStream } from 'fs';
 
-  interface BoxSDKNodeConstructor {
-    new(params: UserConfigurationOptions): BoxSDKNode;
-    getBasicClient(accessToken: string): BoxClient;
-    getPreconfiguredInstance(appConfig: object): BoxSDKNode;
-    CURRENT_USER_ID: string;
-    readonly prototype: BoxSDKNode;
+  export default class BoxSDKNode extends EventEmitter {
+    public static getBasicClient(accessToken: string): BoxClient;
+    public static getPreconfiguredInstance(appConfig: object): BoxSDKNode;
+    constructor(params: UserConfigurationOptions);
+    public config: Config;
+    public getAppAuthClient(type: string, id?: string, tokenStore?: TokenStore): BoxClient;
+    public configure(parms: UserConfigurationOptions): void;
+    public getBasicClient(accessToken: string): BoxClient;
+    public getPersistentClient(tokenInfo: TokenInfo, tokenStore?: TokenStore): BoxClient;
+    public getAnonymousClient(): BoxClient;
+    public CURRENT_USER_ID: string;
   }
-
-  interface BoxSDKNode extends EventEmitter {
-    config: Config;
-    getAppAuthClient(type: string, id?: string, tokenStore?: TokenStore): BoxClient;
-    configure(parms: UserConfigurationOptions): void;
-    getBasicClient(accessToken: string): BoxClient;
-    getPersistentClient(tokenInfo: TokenInfo, tokenStore?: TokenStore): BoxClient;
-    getAnonymousClient(): BoxClient;
-    CURRENT_USER_ID: string;
-  }
-
-  const BoxSDKNode: BoxSDKNodeConstructor;
-  export default BoxSDKNode;
 
   export interface UserConfigurationOptions {
     clientID: string;
@@ -66,13 +58,13 @@ declare module 'box-node-sdk' {
   }
 
   export interface BoxClient {
+    readonly folders: Folders;
+    readonly files: Files;
     setCustomHeader(header: string, value: any): void;
     asUser(userId: string): void;
     asSelf(): void;
     get<T>(path: string, params: any, callback?: (error: any, result: T) => void): Promise<T>;
     wrapWithDefaultHandler<U extends any[], T>(method: (...args: U) => T): (...args: U) => T;
-    readonly folders: Folders;
-    readonly files: Files;
   }
 
   export interface Folders {
@@ -287,7 +279,7 @@ declare module 'box-node-sdk' {
   }
 
   export interface Lock extends Object {
-    type: 'lock'
+    type: 'lock';
     created_by: MiniUser;
     created_at: DateTime;
     expires_at: DateTime;
@@ -301,7 +293,7 @@ declare module 'box-node-sdk' {
       [key: string]: any;
     };
   }
-  
+
   interface ResponseObject {
     request: RequestObject;
     statusCode: number;
@@ -310,16 +302,16 @@ declare module 'box-node-sdk' {
     };
     body: ResponseBody | Buffer | string;
   }
-  
+
   interface ResponseBody {
     [key: string]: any;
     [key: number]: any;
   }
-  
+
   interface ErrorResponseObject extends ResponseObject {
     body: ErrorResponseBody;
   }
-  
+
   interface ErrorResponseBody extends ResponseBody {
     type: 'error';
     status: number;
