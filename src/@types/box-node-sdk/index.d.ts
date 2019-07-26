@@ -6,14 +6,14 @@ declare module 'box-node-sdk' {
   export default class BoxSDKNode extends EventEmitter {
     public static getBasicClient(accessToken: string): BoxClient;
     public static getPreconfiguredInstance(appConfig: object): BoxSDKNode;
-    constructor(params: UserConfigurationOptions);
     public config: Config;
-    public getAppAuthClient(type: string, id?: string, tokenStore?: TokenStore): BoxClient;
+    public CURRENT_USER_ID: string;
+    constructor(params: UserConfigurationOptions);
     public configure(parms: UserConfigurationOptions): void;
+    public getAnonymousClient(): BoxClient;
+    public getAppAuthClient(type: string, id?: string, tokenStore?: TokenStore): BoxClient;
     public getBasicClient(accessToken: string): BoxClient;
     public getPersistentClient(tokenInfo: TokenInfo, tokenStore?: TokenStore): BoxClient;
-    public getAnonymousClient(): BoxClient;
-    public CURRENT_USER_ID: string;
   }
 
   export interface UserConfigurationOptions {
