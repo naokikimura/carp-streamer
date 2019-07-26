@@ -2,6 +2,7 @@
 
 [![npm version](https://badge.fury.io/js/carp-streamer.svg)](https://badge.fury.io/js/carp-streamer)
 [![Known Vulnerabilities](https://snyk.io//test/github/naokikimura/carp-streamer/badge.svg?targetFile=package.json)](https://snyk.io//test/github/naokikimura/carp-streamer?targetFile=package.json)
+[![CodeFactor](https://www.codefactor.io/repository/github/naokikimura/carp-streamer/badge/master)](https://www.codefactor.io/repository/github/naokikimura/carp-streamer/overview/master)
 
 `carp-streamer` is backup tool for files on local computer using Box Platform API.
 
