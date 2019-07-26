@@ -1,20 +1,20 @@
 
 declare module 'box-node-sdk' {
-  import { ReadStream } from 'fs';
   import { EventEmitter } from 'events';
+  import { ReadStream } from 'fs';
 
   interface BoxSDKNodeConstructor {
-    new(params: UserConfigurationOptions): BoxSDKNode
+    new(params: UserConfigurationOptions): BoxSDKNode;
     getBasicClient(accessToken: string): BoxClient;
     getPreconfiguredInstance(appConfig: object): BoxSDKNode;
     CURRENT_USER_ID: string;
-    readonly prototype: BoxSDKNode
+    readonly prototype: BoxSDKNode;
   }
 
   interface BoxSDKNode extends EventEmitter {
     config: Config;
     getAppAuthClient(type: string, id?: string, tokenStore?: TokenStore): BoxClient;
-    configure(parms: UserConfigurationOptions): void
+    configure(parms: UserConfigurationOptions): void;
     getBasicClient(accessToken: string): BoxClient;
     getPersistentClient(tokenInfo: TokenInfo, tokenStore?: TokenStore): BoxClient;
     getAnonymousClient(): BoxClient;
@@ -104,7 +104,7 @@ declare module 'box-node-sdk' {
       upload_part: string;
       status: string;
       abort: string;
-    }
+    };
     session_expires_at: string;
     id: string;
     type: string;
@@ -122,8 +122,8 @@ declare module 'box-node-sdk' {
 
   class ChunkedUploader extends EventEmitter {
     constructor(client: BoxClient, uploadSessionInfo: UploadSessionInfo, file: string | Buffer | ReadStream, size: number, options?: { parallelism?: number, retryInterval?: number, fileAttributes?: any });
-    abort(): Promise<void>;
-    start(): Promise<Items<File>>;
+    public abort(): Promise<void>;
+    public start(): Promise<Items<File>>;
   }
 
   export interface Files {
@@ -163,7 +163,7 @@ declare module 'box-node-sdk' {
     direction: 'ASC' | 'DESC';
   }
 
-  type DateTime = string
+  type DateTime = string;
 
   interface PathCollection {
     total_count: number;
@@ -227,7 +227,7 @@ declare module 'box-node-sdk' {
   }
 
   export interface MiniFolder extends Item {
-    type: 'folder'
+    type: 'folder';
   }
 
   export interface SharedLink {
@@ -282,7 +282,7 @@ declare module 'box-node-sdk' {
   }
 
   export interface MiniFileVersion extends Object {
-    type: 'file_version'
+    type: 'file_version';
     sha1: string;
   }
 
@@ -333,7 +333,7 @@ declare module 'box-node-sdk' {
     message: string;
     request_id: string;
   }
-  
+
   export interface ResponseError extends Error {
     statusCode: number;
     response: ErrorResponseObject;
