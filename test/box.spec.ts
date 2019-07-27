@@ -9,7 +9,7 @@ describe('box', () => {
   describe('BoxClientBuilder', () => {
     it('anonymous client', done => {
       const client = new BoxClientBuilder().build();
-      expect(client).to.have.property('_session').to.be.an.instanceOf(AnonymousSession);
+      expect(client).to.have.property('_session').and.to.be.an.instanceOf(AnonymousSession);
       done();
     });
 
@@ -17,7 +17,7 @@ describe('box', () => {
       const appConfig: BoxAppConfig = { boxAppSettings: { clientID: '', clientSecret: '' }, enterpriseID: 'foo' };
       const clientConfig: BoxClientConfig = { kind: 'AppAuth', type: 'enterprise' };
       const client = new BoxClientBuilder(appConfig, clientConfig).build();
-      expect(client).to.have.property('_session').to.be.an.instanceOf(AppAuthSession);
+      expect(client).to.have.property('_session').and.to.be.an.instanceOf(AppAuthSession);
       done();
     });
 
@@ -25,7 +25,7 @@ describe('box', () => {
       const appConfig: BoxAppConfig = { boxAppSettings: { clientID: '', clientSecret: '' } };
       const clientConfig: BoxClientConfig = { kind: 'Basic', accessToken: '' };
       const client = new BoxClientBuilder(appConfig, clientConfig).build();
-      expect(client).to.have.property('_session').to.be.an.instanceOf(BasicSession);
+      expect(client).to.have.property('_session').and.to.be.an.instanceOf(BasicSession);
       done();
     });
 
@@ -39,7 +39,16 @@ describe('box', () => {
       };
       const clientConfig: BoxClientConfig = { kind: 'Persistent', tokenInfo };
       const client = new BoxClientBuilder(appConfig, clientConfig).build();
-      expect(client).to.have.property('_session').to.be.an.instanceOf(PersistentSession);
+      expect(client).to.have.property('_session').and.to.be.an.instanceOf(PersistentSession);
+      done();
+    });
+
+    it('client configurator', done => {
+      const appConfig: BoxAppConfig = { boxAppSettings: { clientID: '', clientSecret: '' } };
+      const configurator = (client: any) => { client.asUser('foo'); };
+      const clientConfig: BoxClientConfig = { kind: 'Basic', accessToken: '', configurator };
+      const boxClient = new BoxClientBuilder(appConfig, clientConfig).build();
+      expect(boxClient).to.have.property('_customHeaders').and.to.have.property('As-User', 'foo');
       done();
     });
   });
