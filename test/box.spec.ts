@@ -3,7 +3,7 @@ import AppAuthSession from 'box-node-sdk/lib/sessions/app-auth-session';
 import BasicSession from 'box-node-sdk/lib/sessions/basic-session';
 import PersistentSession from 'box-node-sdk/lib/sessions/persistent-session';
 import { expect } from 'chai';
-import { BoxClientBuilder, BoxClientConfig } from '../src/box';
+import BoxClientBuilder, { BoxClientConfig } from '../src/box-client-builder';
 
 describe('box', () => {
   describe('BoxClientBuilder', () => {

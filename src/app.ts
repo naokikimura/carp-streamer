@@ -7,7 +7,8 @@ import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
-import { BoxClientBuilder, BoxClientConfig, BoxFinder, CacheConfig } from './box';
+import BoxFinder, { CacheConfig } from './box';
+import BoxClientBuilder, { BoxClientConfig } from './box-client-builder';
 
 const debug = util.debuglog('carp-streamer:app');
 
