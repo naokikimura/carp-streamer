@@ -1,4 +1,11 @@
 import BoxSDK, * as box from 'box-node-sdk';
+import BoxClient from 'box-node-sdk/lib/box-client';
+import { AppConfig } from 'box-node-sdk/lib/box-node-sdk';
+import { UploadPart } from 'box-node-sdk/lib/chunked-uploader';
+import Files from 'box-node-sdk/lib/managers/files';
+import Folders from 'box-node-sdk/lib/managers/folders';
+import { TokenInfo } from 'box-node-sdk/lib/token-manager';
+import { ResponseError } from 'box-node-sdk/lib/util/errors';
 import { ReadStream, Stats } from 'fs';
 import _ from 'lodash';
 import LRUCache from 'lru-cache';
@@ -11,26 +18,9 @@ import { sleep } from './util';
 
 const debug = util.debuglog('carp-streamer:box');
 
-export interface BoxAppConfig {
-  boxAppSettings: {
-    clientID: string;
-    clientSecret: string;
-    appAuth?: {
-      publicKeyID: string;
-      privateKey: string;
-      passphrase: string;
-    }
-  };
-  webhooks?: {
-    primaryKey: string;
-    secondaryKey: string;
-  };
-  enterpriseID?: string;
-}
-
 interface BoxClientConfiguration {
   kind: 'Basic' | 'Persistent' | 'AppAuth' | 'Anonymous';
-  configurator?: (client: box.BoxClient) => void;
+  configurator?: (client: BoxClient) => void;
 }
 
 interface BoxBasicClientConfig extends BoxClientConfiguration {
@@ -40,7 +30,7 @@ interface BoxBasicClientConfig extends BoxClientConfiguration {
 
 interface BoxPersistentClientConfig extends BoxClientConfiguration {
   kind: 'Persistent';
-  tokenInfo: box.TokenInfo;
+  tokenInfo: TokenInfo;
 }
 
 interface BoxAppAuthClientConfig extends BoxClientConfiguration {
@@ -79,9 +69,9 @@ export class BoxClientBuilder {
 
   private sdk: BoxSDK;
   private config: BoxClientConfig;
-  private client: box.BoxClient | undefined;
+  private client: BoxClient | undefined;
 
-  constructor(appConfig: BoxAppConfig = { boxAppSettings: { clientID: '', clientSecret: '' } }, clientConfig: BoxClientConfig = { kind: 'Anonymous' }) {
+  constructor(appConfig: AppConfig = { boxAppSettings: { clientID: '', clientSecret: '' } }, clientConfig: BoxClientConfig = { kind: 'Anonymous' }) {
     this.sdk = BoxSDK.getPreconfiguredInstance(appConfig);
     this.config = clientConfig;
   }
@@ -93,13 +83,13 @@ export class BoxClientBuilder {
 
 const CHUNKED_UPLOAD_MINIMUM = 20_000_000;
 
-function findConflictItem(error: box.ResponseError) {
+function findConflictItem(error: ResponseError) {
   if (error.statusCode === 409) {
     return _.first(error.response.body.context_info && error.response.body.context_info.conflicts);
   }
 }
 
-function isResponseError(error: any): error is box.ResponseError {
+function isResponseError(error: any): error is ResponseError {
   return error.statusCode && error.response && error.request && error instanceof Error;
 }
 
@@ -114,7 +104,7 @@ export interface CacheConfig {
 }
 
 export class BoxFinder {
-  public static async create(client: box.BoxClient, folderId = '0', cacheConfig: CacheConfig = { max: 100_000_000 }) {
+  public static async create(client: BoxClient, folderId = '0', cacheConfig: CacheConfig = { max: 100_000_000 }) {
     const folders = proxyToTrapTooManyRequests(client.folders);
     const current = await folders.get(folderId);
     const cacheOptions: LRUCache.Options<string, box.Item[]> = {
@@ -126,7 +116,7 @@ export class BoxFinder {
     return BoxFinder.new(client, current, new LRUCache(cacheOptions), Boolean(cacheConfig.disableCachedResponsesValidation));
   }
 
-  private static new(client: box.BoxClient, folder: box.MiniFolder, cache: LRUCache<string, box.Item[]>, disableCachedResponsesValidation: boolean) {
+  private static new(client: BoxClient, folder: box.MiniFolder, cache: LRUCache<string, box.Item[]>, disableCachedResponsesValidation: boolean) {
     return new BoxFinder(client, folder, cache, disableCachedResponsesValidation);
   }
 
@@ -152,10 +142,10 @@ export class BoxFinder {
     return BoxFinder.findFolderByPath(folderPath.slice(1), subFolder && finder.new(subFolder));
   }
 
-  private files: box.Files;
-  private folders: box.Folders;
+  private files: Files;
+  private folders: Folders;
 
-  private constructor(private client: box.BoxClient, readonly current: box.MiniFolder, private cache: LRUCache<string, box.Item[]>, private disableCachedResponsesValidation: boolean) {
+  private constructor(private client: BoxClient, readonly current: box.MiniFolder, private cache: LRUCache<string, box.Item[]>, private disableCachedResponsesValidation: boolean) {
     this.files = proxyToTrapTooManyRequests(client.files);
     this.folders = proxyToTrapTooManyRequests(client.folders);
   }
@@ -205,7 +195,7 @@ export class BoxFinder {
     if (stats && (stats.size >= CHUNKED_UPLOAD_MINIMUM)) {
       const chunkedUploader = await this.files.getChunkedUploader(folderId, stats.size, name, content, { fileAttributes: options });
       chunkedUploader
-        .on('chunkUploaded', (data: box.UploadPart) => {
+        .on('chunkUploaded', (data: UploadPart) => {
           debug('chunk uploaded: %s', data.part.size);
         })
         .on('uploadComplete', (uploadFile: box.File) => {
@@ -227,7 +217,7 @@ export class BoxFinder {
     if (stats && (stats.size >= CHUNKED_UPLOAD_MINIMUM)) {
       const chunkedUploader = await this.files.getNewVersionChunkedUploader(file.id, stats.size, content, { fileAttributes: options });
       chunkedUploader
-        .on('chunkUploaded', (data: box.UploadPart) => {
+        .on('chunkUploaded', (data: UploadPart) => {
           debug('chunk uploaded: %s', data.part.size);
         })
         .on('uploadComplete', (uploadFile: box.File) => {
@@ -341,7 +331,7 @@ function makeRetriable<T, U extends any[], V>(method: asyncFn<T, U>, that: V, ca
   };
 }
 
-function determineDelayTime(retryTimes: number, error?: box.ResponseError): number {
+function determineDelayTime(retryTimes: number, error?: ResponseError): number {
   const retryAfter = Number(error ? error.response.headers['retry-after'] || 0 : 0);
   return (retryAfter + Math.floor(Math.random() * 10 * (1 / retryTimes))) * 1000;
 }
@@ -356,7 +346,7 @@ const retryIfTooManyRequestsError: RetryCallback<any, any[], any> = (error, meth
   return makeRetriable(method, that, retryIfTooManyRequestsError, retryTimes - 1, retryAfter)(...args);
 };
 
-const retryIfFolderConflictError: RetryCallback<box.Folder, [string, string], box.Folders> = async (error, method, that, args, retryTimes) => {
+const retryIfFolderConflictError: RetryCallback<box.Folder, [string, string], Folders> = async (error, method, that, args, retryTimes) => {
   const [parentFolderId, folderName] = args;
   debug(`Failed to create folder '%s' (parent folder id: %s).`, folderName, parentFolderId);
   if (!isResponseError(error) || error.statusCode !== 409) { throw error; }

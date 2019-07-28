@@ -1,11 +1,13 @@
 import async from 'async';
 import * as box from 'box-node-sdk';
+import BoxClient from 'box-node-sdk/lib/box-client';
+import { AppConfig } from 'box-node-sdk/lib/box-node-sdk';
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
-import { BoxAppConfig, BoxClientBuilder, BoxClientConfig, BoxFinder, CacheConfig } from './box';
+import { BoxClientBuilder, BoxClientConfig, BoxFinder, CacheConfig } from './box';
 
 const debug = util.debuglog('carp-streamer:app');
 
@@ -19,14 +21,14 @@ export enum SyncEventType {
 }
 
 export class Synchronizer extends EventEmitter {
-  private client: box.BoxClient;
+  private client: BoxClient;
   private q: async.AsyncQueue<Task>;
   private cacheConfig: CacheConfig;
 
-  constructor(appConfig?: BoxAppConfig, accessToken?: string, options?: { asUser: string }, concurrency: number = 0, cacheConfig: CacheConfig = {}) {
+  constructor(appConfig?: AppConfig, accessToken?: string, options?: { asUser: string }, concurrency: number = 0, cacheConfig: CacheConfig = {}) {
     super();
     const configurator = options && options.asUser
-      ? ((client: box.BoxClient) => client.asUser(options.asUser)) : undefined;
+      ? ((client: BoxClient) => client.asUser(options.asUser)) : undefined;
     const clientConfig: BoxClientConfig = accessToken
       ? { kind: 'Basic', accessToken, configurator }
       : { kind: 'AppAuth', type: 'enterprise', configurator };
