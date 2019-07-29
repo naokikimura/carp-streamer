@@ -107,7 +107,7 @@ const spinner = ora({
             break;
           case SyncResultStatus.UNKNOWN:
           default:
-            spinner.fail('unknown result status');
+            spinner.fail(`'${absolutePath}' is unknown result status: ${status}`);
         }
         progressBar.tick();
       });
