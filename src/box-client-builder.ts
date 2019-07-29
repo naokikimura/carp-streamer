@@ -28,12 +28,17 @@ interface BoxAnonymousClientConfig extends BoxClientConfiguration {
   kind: 'Anonymous';
 }
 
-export type BoxClientConfig = BoxBasicClientConfig | BoxPersistentClientConfig | BoxAppAuthClientConfig | BoxAnonymousClientConfig;
+export type BoxClientConfig =
+  BoxBasicClientConfig | BoxPersistentClientConfig | BoxAppAuthClientConfig | BoxAnonymousClientConfig;
 
-const isBoxBasicClientConfig = (config: BoxClientConfig): config is BoxBasicClientConfig => config.kind === 'Basic';
-const isBoxPersistentClientConfig = (config: BoxClientConfig): config is BoxPersistentClientConfig => config.kind === 'Persistent';
-const isBoxAppAuthClientConfig = (config: BoxClientConfig): config is BoxAppAuthClientConfig => config.kind === 'AppAuth';
-const isBoxAnonymousClientConfig = (config: BoxClientConfig): config is BoxAnonymousClientConfig => config.kind === 'Anonymous';
+const isBoxBasicClientConfig =
+  (config: BoxClientConfig): config is BoxBasicClientConfig => config.kind === 'Basic';
+const isBoxPersistentClientConfig =
+  (config: BoxClientConfig): config is BoxPersistentClientConfig => config.kind === 'Persistent';
+const isBoxAppAuthClientConfig =
+  (config: BoxClientConfig): config is BoxAppAuthClientConfig => config.kind === 'AppAuth';
+const isBoxAnonymousClientConfig =
+  (config: BoxClientConfig): config is BoxAnonymousClientConfig => config.kind === 'Anonymous';
 
 export default class BoxClientBuilder {
   private static build(sdk: BoxSDK, config: BoxClientConfig) {
@@ -56,9 +61,9 @@ export default class BoxClientBuilder {
   private config: BoxClientConfig;
   private client: BoxClient | undefined;
 
-  constructor(appConfig: AppConfig = { boxAppSettings: { clientID: '', clientSecret: '' } }, clientConfig: BoxClientConfig = { kind: 'Anonymous' }) {
-    this.sdk = BoxSDK.getPreconfiguredInstance(appConfig);
-    this.config = clientConfig;
+  constructor(appConfig?: AppConfig, clientConfig?: BoxClientConfig) {
+    this.sdk = BoxSDK.getPreconfiguredInstance(appConfig || { boxAppSettings: { clientID: '', clientSecret: '' } });
+    this.config = clientConfig || { kind: 'Anonymous' };
   }
 
   public build() {
