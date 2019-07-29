@@ -109,7 +109,7 @@ export default class BoxFinder {
   public async uploadFile(name: string, content: string | Buffer | ReadStream, stats?: Stats, folder?: box.MiniFolder) {
     const folderId = (folder || this.current).id;
     const options = {
-      content_created_at: stats && toRFC3339String(stats.ctime),
+      content_created_at: stats && toRFC3339String(stats.birthtime),
       content_modified_at: stats && toRFC3339String(stats.mtime),
     };
     try {
