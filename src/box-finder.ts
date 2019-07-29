@@ -48,7 +48,9 @@ export default class BoxFinder {
       maxAge: cacheConfig.maxAge,
       updateAgeOnGet: true
     };
-    return BoxFinder.new(client, current, new LRUCache(cacheOptions), Boolean(cacheConfig.disableCachedResponsesValidation));
+    const cache = new LRUCache(cacheOptions);
+    const disableCachedResponsesValidation = Boolean(cacheConfig.disableCachedResponsesValidation);
+    return BoxFinder.new(client, current, cache, disableCachedResponsesValidation);
   }
 
   private static new(client: BoxClient, folder: box.MiniFolder, cache: LRUCache<string, box.Item[]>, disableCachedResponsesValidation: boolean) {
@@ -128,7 +130,8 @@ export default class BoxFinder {
     }
     debug('uploading %s...', name);
     if (stats && (stats.size >= CHUNKED_UPLOAD_MINIMUM)) {
-      const chunkedUploader = await this.files.getChunkedUploader(folderId, stats.size, name, content, { fileAttributes: options });
+      const chunkedUploader =
+        await this.files.getChunkedUploader(folderId, stats.size, name, content, { fileAttributes: options });
       chunkedUploader
         .on('chunkUploaded', (data: UploadPart) => {
           debug('chunk uploaded: %s', data.part.size);
@@ -150,7 +153,8 @@ export default class BoxFinder {
     const result = await this.files.preflightUploadNewFileVersion(file.id, fileData);
     debug('preflight Upload New File Version: %o', result);
     if (stats && (stats.size >= CHUNKED_UPLOAD_MINIMUM)) {
-      const chunkedUploader = await this.files.getNewVersionChunkedUploader(file.id, stats.size, content, { fileAttributes: options });
+      const chunkedUploader =
+        await this.files.getNewVersionChunkedUploader(file.id, stats.size, content, { fileAttributes: options });
       chunkedUploader
         .on('chunkUploaded', (data: UploadPart) => {
           debug('chunk uploaded: %s', data.part.size);
