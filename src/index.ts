@@ -71,43 +71,44 @@ const spinner = ora({
     const synchronizer = new Synchronizer(appConfig, args.token, args['as-user'], concurrency, cacheConfig);
     synchronizer
       .on(SyncEventType.ENTER, absolutePath => {
-        debug('found %s', absolutePath);
         progressBar.total = progressBar.total + 1;
       })
       .on(SyncEventType.ENTERED, count => {
-        spinner.info(`${count} entries were found.`);
+        const timestamp = new Date().toISOString();
+        spinner.info(`${timestamp}\t${count} entries were found.`);
       })
       .on(SyncEventType.SYNCHRONIZE, (error, absolutePath, status: SyncResultStatus) => {
+        const timestamp = new Date().toISOString();
         switch (status) {
           case SyncResultStatus.DENIED:
             debug('%s: %s\n%s', error.name, error.message, error.stack);
-            spinner.warn(`Could not access '${absolutePath}'.`);
+            spinner.warn(`${timestamp}\tCould not access '${absolutePath}'.`);
             break;
           case SyncResultStatus.EXCLUDED:
-            spinner.info(`'${absolutePath}' has been excluded.`);
+            spinner.info(`${timestamp}\t'${absolutePath}' has been excluded.`);
             break;
           case SyncResultStatus.DOWNLOADED:
-            spinner.succeed(`'${absolutePath}' only exists remotely.`);
+            spinner.succeed(`${timestamp}\t'${absolutePath}' only exists remotely.`);
             break;
           case SyncResultStatus.SYNCHRONIZED:
-            spinner.succeed(`'${absolutePath}' is synchronized.`);
+            spinner.succeed(`${timestamp}\t'${absolutePath}' is synchronized.`);
             break;
           case SyncResultStatus.UPLOADED:
-            spinner.succeed(`'${absolutePath}' is newly uploaded.`);
+            spinner.succeed(`${timestamp}\t'${absolutePath}' is newly uploaded.`);
             break;
           case SyncResultStatus.UPGRADED:
-            spinner.succeed(`A new version of '${absolutePath}' has been uploaded.`);
+            spinner.succeed(`${timestamp}\tA new version of '${absolutePath}' has been uploaded.`);
             break;
           case SyncResultStatus.CREATED:
-            spinner.succeed(`'${absolutePath}' is newly created.`);
+            spinner.succeed(`${timestamp}\t'${absolutePath}' is newly created.`);
             break;
           case SyncResultStatus.FAILURE:
-            debug('%s: %s\n%s', error.name, error.message, error.stack);
-            spinner.fail(`Failed to synchronize '${absolutePath}'. (${error.message})`);
+            debug('Failed to synchronize \'%s\' %o', absolutePath, error);
+            spinner.fail(`${timestamp}\tFailed to synchronize '${absolutePath}'.\t(${error.message})`);
             break;
           case SyncResultStatus.UNKNOWN:
           default:
-            spinner.fail(`'${absolutePath}' is unknown result status: ${status}`);
+            spinner.fail(`${timestamp}\t'${absolutePath}' is unknown result status: ${status}`);
         }
         progressBar.tick();
       });
