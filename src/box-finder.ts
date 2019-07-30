@@ -133,6 +133,12 @@ export default class BoxFinder {
       const chunkedUploader =
         await this.files.getChunkedUploader(folderId, stats.size, name, content, { fileAttributes: options });
       chunkedUploader
+        .on('error', error => {
+          debug('Uploading with ChunkedUploader failed. %o', error.error);
+        })
+        .on('chunkError', error => {
+          debug('Failed to upload chunk. %o', error);
+        })
         .on('chunkUploaded', (data: UploadPart) => {
           debug('chunk uploaded: %s', data.part.size);
         })
@@ -156,6 +162,12 @@ export default class BoxFinder {
       const chunkedUploader =
         await this.files.getNewVersionChunkedUploader(file.id, stats.size, content, { fileAttributes: options });
       chunkedUploader
+        .on('error', error => {
+          debug('Uploading with ChunkedUploader failed. %o', error.error);
+        })
+        .on('chunkError', error => {
+          debug('Failed to upload chunk. %o', error);
+        })
         .on('chunkUploaded', (data: UploadPart) => {
           debug('chunk uploaded: %s', data.part.size);
         })
