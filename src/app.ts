@@ -7,10 +7,11 @@ import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';
 import util from 'util';
+import { name as packageName } from '../package.json';
 import BoxClientBuilder, { BoxClientConfig } from './box-client-builder';
 import BoxFinder, { CacheConfig } from './box-finder';
 
-const debug = util.debuglog('carp-streamer:app');
+const debug = util.debuglog(`${packageName}:app`);
 
 const readdirAsync = util.promisify(fs.readdir);
 const statAsync = util.promisify(fs.stat);

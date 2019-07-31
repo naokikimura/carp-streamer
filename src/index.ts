@@ -7,11 +7,10 @@ import path from 'path';
 import progress from 'progress';
 import { Writable } from 'stream';
 import util from 'util';
+import { name as packageName, version as packageVersion } from '../package.json';
 import { SyncEventType, Synchronizer, SyncResultStatus } from './app';
 
-// tslint:disable-next-line: no-var-requires
-const npmPackage = require('../package.json');
-const debug = util.debuglog(`${npmPackage.name}:index`);
+const debug = util.debuglog(`${packageName}:index`);
 
 const argsOption = {
   alias: { t: 'token', v: 'version', c: 'concurrency' },
@@ -29,7 +28,7 @@ const argsOption = {
 };
 const args = minimist(process.argv.slice(2), argsOption);
 if (args.version) {
-  console.log(npmPackage.version);
+  console.log(packageVersion);
   process.exit(0);
 }
 
@@ -37,7 +36,7 @@ const sources = args._.slice(0, -1);
 const [destination] = args._.slice(-1);
 
 if (sources.length === 0 || destination === undefined) {
-  console.error(`usage: ${npmPackage.name} [options] source... destination`);
+  console.error(`usage: ${packageName} [options] source... destination`);
   process.exit(1);
 }
 
