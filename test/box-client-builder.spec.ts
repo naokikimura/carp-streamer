@@ -1,3 +1,5 @@
+/// <reference types="../src/@types/box-node-sdk" />
+
 import AnonymousSession from 'box-node-sdk/lib/sessions/anonymous-session';
 import AppAuthSession from 'box-node-sdk/lib/sessions/app-auth-session';
 import BasicSession from 'box-node-sdk/lib/sessions/basic-session';
