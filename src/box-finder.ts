@@ -1,3 +1,4 @@
+import assert from 'assert';
 import * as box from 'box-node-sdk';
 import BoxClient from 'box-node-sdk/lib/box-client';
 import { UploadPart } from 'box-node-sdk/lib/chunked-uploader';
@@ -153,6 +154,9 @@ export default class BoxFinder {
   }
 
   public async uploadNewFileVersion(file: box.MiniFile, content: string | Buffer | ReadStream, stats?: Stats) {
+    if (file.name === undefined) {
+      return assert.fail('file.name is required.');
+    }
     const options = {
       content_modified_at: stats && toRFC3339String(stats.mtime),
     };
@@ -185,10 +189,10 @@ export default class BoxFinder {
     return BoxFinder.new(this.client, folder, cache, disableCachedResponsesValidation);
   }
 
-  private createFolder(folderName: string, parentFolder = this.current): Promise<box.Folder> {
+  private createFolder(folderName: string, parentFolder = this.current) {
     const parentFolderId = parentFolder.id;
-    return makeRetriable(this.folders.create, this.folders, retryIfFolderConflictError)(parentFolderId, folderName)
-      .then(cacheItem(this.cache));
+    const create = makeRetriable(this.folders.create, this.folders, retryIfFolderConflictError);
+    return create(parentFolderId, folderName).then(cacheItem(this.cache));
   }
 
   private findFileByName(fileName: string, parentFolder = this.current) {
@@ -200,7 +204,7 @@ export default class BoxFinder {
   }
 
   private async findItemByName<T extends box.Item>(itemName: string, isItem: (item: box.Item) => item is T, parentFolder = this.current) {
-    const filter = (item: T) => item.name.normalize() === itemName.normalize();
+    const filter = (item: T) => item.name && item.name.normalize() === itemName.normalize();
     const cachedItem = _.first((this.cache.get(parentFolder.id) || []).filter(isItem).filter(filter));
     if (cachedItem) {
       debug('%s has hit the cache.', cachedItem.name);
@@ -235,7 +239,8 @@ export default class BoxFinder {
       headers: { 'IF-NONE-MATCH': item.etag },
       qs: options,
     };
-    return this.client.wrapWithDefaultHandler(this.client.get)<U>(basePath, params)
+    const get = this.client.wrapWithDefaultHandler(this.client.get);
+    return get<U>(basePath, params)
       .then(cacheItem(this.cache))
       .catch(error => {
         if (!isResponseError(error)) { throw error; }
@@ -259,6 +264,9 @@ const cacheItems = (cache: LRUCache<string, box.Item[]>) => (newItems: box.Items
 
 const cacheItem = <T extends box.File | box.Folder>(cache: LRUCache<string, box.Item[]>) => (newItem: T) => {
   debug('new %s: %o', isMiniFile(newItem) ? 'file' : isMiniFolder(newItem) ? 'folder' : 'item', newItem);
+  if (newItem.parent === undefined || newItem.parent === null) {
+    return assert.fail('folder or file parent is required.');
+  }
   const parentFolderId = newItem.parent.id;
   const cachedItems = cache.get(parentFolderId) || [];
   cache.set(parentFolderId, _.unionWith([newItem], cachedItems, (a, b) => a.type === b.type && a.id === b.id));
