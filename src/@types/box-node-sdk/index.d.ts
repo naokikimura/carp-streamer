@@ -10,8 +10,8 @@ declare module 'box-node-sdk' {
 
   export interface Item extends Object {
     type: 'folder' | 'file';
-    name: string;
-    sequence_id: string | null;
+    name?: string;
+    sequence_id?: string | null;
     etag: string | null;
   }
 
@@ -36,41 +36,41 @@ declare module 'box-node-sdk' {
     entries: Item[];
   }
 
-  interface MiniUser extends Object {
+  export interface MiniUser extends Object {
     type: 'user';
     name: string;
     login: string;
   }
 
   export interface Folder extends MiniFolder {
-    created_at: DateTime | null;
-    modified_at: DateTime;
-    description: string;
-    size: number;
-    path_collection: PathCollection;
-    created_by: MiniUser;
-    modified_by: MiniUser;
-    trashed_at: DateTime | null;
-    purged_at: DateTime | null;
-    content_created_at: DateTime | null;
-    content_modified_at: DateTime | null;
+    created_at?: DateTime | null;
+    modified_at?: DateTime | null;
+    description?: string;
+    size?: number;
+    path_collection?: PathCollection;
+    created_by?: MiniUser;
+    modified_by?: MiniUser;
+    trashed_at?: DateTime | null;
+    purged_at?: DateTime | null;
+    content_created_at?: DateTime | null;
+    content_modified_at?: DateTime | null;
     expires_at?: DateTime;
-    owned_by: MiniUser;
-    shared_link: SharedLink | null;
-    folder_upload_email: { access: AccessLevel; email: string } | null;
-    parent: MiniFolder;
-    item_status: ItemStatus;
-    item_collection: Items<Item>;
-    sync_state: SyncState;
-    has_collaborations: boolean;
-    permissions: Permissions;
-    tags: string[];
-    can_non_owners_invite: boolean;
-    is_externally_owned: boolean;
-    is_collaboration_restricted_to_enterprise: boolean;
-    allowed_shared_link_access_levels: AccessLevel[];
-    allowed_invitee_roles: string[];
-    watermark_info: WatermarkInfo;
+    owned_by?: MiniUser;
+    shared_link?: SharedLink | null;
+    folder_upload_email?: { access: AccessLevel; email: string } | null;
+    parent?: MiniFolder | null;
+    item_status?: ItemStatus;
+    item_collection?: Items<Item>;
+    sync_state?: SyncState;
+    has_collaborations?: boolean;
+    permissions?: Permissions;
+    tags?: string[];
+    can_non_owners_invite?: boolean;
+    is_externally_owned?: boolean;
+    is_collaboration_restricted_to_enterprise?: boolean;
+    allowed_shared_link_access_levels?: AccessLevel[];
+    allowed_invitee_roles?: string[];
+    watermark_info?: WatermarkInfo;
   }
 
   interface WatermarkInfo {
@@ -117,34 +117,34 @@ declare module 'box-node-sdk' {
   }
 
   export interface File extends MiniFile {
-    description: string;
-    size: number;
-    path_collection: PathCollection;
-    created_at: DateTime;
-    modified_at: DateTime;
-    trashed_at: DateTime;
-    purged_at: DateTime;
-    content_created_at: DateTime;
-    content_modified_at: DateTime;
-    expires_at: DateTime;
-    created_by: MiniUser;
-    modified_by: MiniUser;
-    owned_by: MiniUser;
-    shared_link: SharedLink;
-    parent: MiniFolder;
-    item_status: ItemStatus;
-    version_number: string;
-    comment_count: number;
-    permissions: Permissions;
-    tags: string[];
-    lock: Lock | null;
-    extension: string;
-    is_package: boolean;
-    expiring_embed_link: string;
-    watermark_info: WatermarkInfo;
-    allowed_invitee_roles: string[];
-    is_externally_owned: boolean;
-    has_collaborations: boolean;
+    description?: string;
+    size?: number;
+    path_collection?: PathCollection;
+    created_at?: DateTime;
+    modified_at?: DateTime;
+    trashed_at?: DateTime | null;
+    purged_at?: DateTime | null;
+    content_created_at?: DateTime;
+    content_modified_at?: DateTime;
+    expires_at?: DateTime;
+    created_by?: MiniUser;
+    modified_by?: MiniUser;
+    owned_by?: MiniUser;
+    shared_link?: SharedLink | null;
+    parent?: MiniFolder;
+    item_status?: ItemStatus;
+    version_number?: string;
+    comment_count?: number;
+    permissions?: Permissions;
+    tags?: string[];
+    lock?: Lock | null;
+    extension?: string;
+    is_package?: boolean;
+    expiring_embed_link?: string;
+    watermark_info?: WatermarkInfo;
+    allowed_invitee_roles?: string[];
+    is_externally_owned?: boolean;
+    has_collaborations?: boolean;
   }
 
   export interface MiniFileVersion extends Object {
