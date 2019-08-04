@@ -1,6 +1,7 @@
 /// <reference types="../src/@types/box-node-sdk" />
 
 import BoxSDK, * as box from 'box-node-sdk';
+import BoxClient from 'box-node-sdk/lib/box-client';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import url from 'url';
@@ -116,7 +117,7 @@ describe('BoxFinder', () => {
     owned_by: owner,
     parent: miniBar,
     path_collection: {
-      entries: [ miniRoot, miniBar ],
+      entries: [miniRoot, miniBar],
       total_count: 2,
     },
     purged_at: null,
@@ -222,24 +223,36 @@ describe('BoxFinder', () => {
     trashed_at: null,
     type: miniRoot.type,
   };
-
-  describe('create', () => {
-    it('should return a finder that currently has a root folder if folderId is not specified', async () => {
-      const expected = root;
-      const client = BoxSDK.getBasicClient('');
-      sinon.stub(client.folders, 'get').withArgs(expected.id).returns(Promise.resolve(expected));
-      const finder = await BoxFinder.create(client);
-      expect(finder.current).to.have.property('id', expected.id);
-    });
-
-    it('should return a finder that currently has a specified folder if folderId is specified', async () => {
-      const expected = bar;
-      const client = BoxSDK.getBasicClient('');
-      sinon.stub(client.folders, 'get').withArgs(expected.id).returns(Promise.resolve(expected));
-      const finder = await BoxFinder.create(client, expected.id);
-      expect(finder.current).to.have.property('id', expected.id);
-    });
-  });
+  const corge: box.Folder = {
+    etag: '0',
+    id: '9999999999',
+    name: 'corge',
+    parent: miniRoot,
+    type: 'folder',
+  };
+  const quux: box.Folder = {
+    etag: '0',
+    id: '9999999998',
+    name: 'quux',
+    parent: miniQux,
+    type: 'folder'
+  };
+  const grault: box.Folder = {
+    etag: '0',
+    id: '9999999997',
+    name: 'grault',
+    parent: miniRoot,
+    type: 'folder',
+  };
+  const garply: box.Folder = {
+    etag: '0',
+    id: '9999999996',
+    name: 'garply',
+    parent: grault,
+    type: 'folder',
+  };
+  const client = BoxSDK.getBasicClient('');
+  let stub: sinon.SinonStubbedInstance<BoxClient>;
 
   class NotModifiedError extends Error {
     public statusCode = 304;
@@ -247,119 +260,98 @@ describe('BoxFinder', () => {
     public response = {};
   }
 
+  beforeEach(() => {
+    stub = sinon.stub(client);
+    stub.wrapWithDefaultHandler.restore();
+    stub.get
+      .withArgs(url.resolve('/folders/', root.id), { qs: undefined }).resolves(root)
+      .withArgs(url.resolve('/folders/', bar.id), { qs: undefined }).resolves(bar)
+      .withArgs(url.resolve('/folders/', qux.id), { qs: undefined }).resolves(qux)
+      .withArgs(url.resolve('/files/', foo.id), { qs: undefined }).resolves(foo)
+      .withArgs(url.resolve('/files/', baz.id), { qs: undefined }).resolves(baz)
+      .withArgs(url.resolve('/files/', waldo.id), { qs: undefined }).resolves(waldo)
+      .withArgs(url.resolve('/folders/', root.id), { headers: { 'IF-NONE-MATCH': root.etag }, qs: undefined })
+      .rejects(new NotModifiedError())
+      .withArgs(url.resolve('/folders/', bar.id), { headers: { 'IF-NONE-MATCH': bar.etag }, qs: undefined })
+      .rejects(new NotModifiedError())
+      .withArgs(url.resolve('/folders/', qux.id), { headers: { 'IF-NONE-MATCH': qux.etag }, qs: undefined })
+      .rejects(new NotModifiedError())
+      .withArgs(url.resolve('/files/', foo.id), { headers: { 'IF-NONE-MATCH': foo.etag }, qs: undefined })
+      .rejects(new NotModifiedError())
+      .withArgs(url.resolve('/files/', baz.id), { headers: { 'IF-NONE-MATCH': baz.etag }, qs: undefined })
+      .rejects(new NotModifiedError())
+      .withArgs(url.resolve('/files/', waldo.id), { headers: { 'IF-NONE-MATCH': waldo.etag }, qs: undefined })
+      .rejects(new NotModifiedError())
+      .withArgs(`${url.resolve('/folders/', root.id)}/items`, { qs: { marker: undefined, usemarker: true } })
+      .resolves({
+        entries: [foo, bar, baz],
+        limit: 100,
+        order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
+        total_count: 3,
+      })
+      .withArgs(`${url.resolve('/folders/', bar.id)}/items`, { qs: { marker: undefined, usemarker: true } })
+      .resolves({
+        entries: [qux, waldo],
+        limit: 100,
+        order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
+        total_count: 2,
+      })
+      .withArgs(`${url.resolve('/folders/', qux.id)}/items`, { qs: { marker: undefined, usemarker: true } })
+      .resolves({
+        entries: [],
+        limit: 100,
+        order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
+        total_count: 0,
+      });
+  });
+
+  afterEach(() => {
+    sinon.restore();
+  });
+
+  describe('create', () => {
+    it('should return a finder that currently has a root folder if folderId is not specified', async () => {
+      const expected = root;
+      const finder = await BoxFinder.create(client);
+      expect(finder.current).to.have.property('id', expected.id);
+    });
+
+    it('should return a finder that currently has a specified folder if folderId is specified', async () => {
+      const expected = bar;
+      const finder = await BoxFinder.create(client, expected.id);
+      expect(finder.current).to.have.property('id', expected.id);
+    });
+  });
+
   describe('createFolderUnlessItExists', () => {
     it('should return existing folder if folder exists', async () => {
-      const client = BoxSDK.getBasicClient('');
-      sinon.stub(client, 'get')
-        .withArgs(url.resolve('/folders/', root.id), { headers: { 'IF-NONE-MATCH': root.etag }, qs: undefined })
-        .rejects(new NotModifiedError())
-        .withArgs(url.resolve('/folders/', bar.id), { headers: { 'IF-NONE-MATCH': bar.etag }, qs: undefined })
-        .rejects(new NotModifiedError())
-        .withArgs(url.resolve('/folders/', qux.id), { headers: { 'IF-NONE-MATCH': qux.etag }, qs: undefined })
-        .rejects(new NotModifiedError());
-      sinon.stub(client.folders, 'get')
-        .withArgs(root.id).returns(Promise.resolve(root))
-        .withArgs(bar.id).returns(Promise.resolve(bar))
-        .withArgs(qux.id).returns(Promise.resolve(qux));
-      sinon.stub(client.folders, 'getItems')
-        .withArgs(root.id).returns(Promise.resolve({
-          entries: [foo, bar, baz],
-          limit: 100,
-          order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
-          total_count: 3,
-        }))
-        .withArgs(bar.id).returns(Promise.resolve({
-          entries: [qux, waldo],
-          limit: 100,
-          order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
-          total_count: 2,
-        }))
-        .withArgs(qux.id).returns(Promise.resolve({
-          entries: [],
-          limit: 100,
-          order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
-          total_count: 0,
-        }));
       const finder = await BoxFinder.create(client, '0');
       expect(await finder.createFolderUnlessItExists('bar')).to.have.property('id', bar.id);
       expect(await finder.createFolderUnlessItExists('bar/qux')).to.have.property('id', qux.id);
     });
 
     it('should return new folder if folder does not exist', async () => {
-      const corge: box.Folder = {
-        etag: '0',
-        id: '9999999999',
-        name: 'corge',
-        parent: miniRoot,
-        type: 'folder',
-      };
-      const quux: box.Folder = {
-        etag: '0',
-        id: '9999999998',
-        name: 'quux',
-        parent: miniQux,
-        type: 'folder'
-      };
-      const grault: box.Folder = {
-        etag: '0',
-        id: '9999999997',
-        name: 'grault',
-        parent: miniRoot,
-        type: 'folder',
-      };
-      const garply: box.Folder = {
-        etag: '0',
-        id: '9999999996',
-        name: 'garply',
-        parent: grault,
-        type: 'folder',
-      };
-      const client = BoxSDK.getBasicClient('');
-      sinon.stub(client, 'get')
-        .withArgs(url.resolve('/folders/', root.id), { headers: { 'IF-NONE-MATCH': root.etag }, qs: undefined })
-        .rejects(new NotModifiedError())
-        .withArgs(url.resolve('/folders/', bar.id), { headers: { 'IF-NONE-MATCH': bar.etag }, qs: undefined })
-        .rejects(new NotModifiedError())
-        .withArgs(url.resolve('/folders/', qux.id), { headers: { 'IF-NONE-MATCH': qux.etag }, qs: undefined })
-        .rejects(new NotModifiedError());
-      sinon.stub(client.folders, 'get')
-        .withArgs(root.id).returns(Promise.resolve(root))
-        .withArgs(bar.id).returns(Promise.resolve(bar))
-        .withArgs(qux.id).returns(Promise.resolve(qux))
-        .withArgs(corge.id).returns(Promise.resolve(corge))
-        .withArgs(grault.id).returns(Promise.resolve(grault))
-        .withArgs(garply.id).returns(Promise.resolve(garply))
-        .withArgs(quux.id).returns(Promise.resolve(quux));
-      sinon.stub(client.folders, 'getItems')
-        .withArgs(root.id).returns(Promise.resolve({
-          entries: [foo, bar, baz],
-          limit: 100,
-          order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
-          total_count: 3,
-        }))
-        .withArgs(bar.id).returns(Promise.resolve({
-          entries: [qux, waldo],
-          limit: 100,
-          order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
-          total_count: 2,
-        }))
-        .withArgs(qux.id).returns(Promise.resolve({
+      stub.get
+        .withArgs(url.resolve('/folders/', quux.id), { qs: undefined }).resolves(quux)
+        .withArgs(url.resolve('/folders/', corge.id), { qs: undefined }).resolves(corge)
+        .withArgs(url.resolve('/folders/', grault.id), { qs: undefined }).resolves(grault)
+        .withArgs(url.resolve('/folders/', garply.id), { qs: undefined }).resolves(garply)
+        .withArgs(`${url.resolve('/folders/', grault.id)}/items`, { qs: { marker: undefined, usemarker: true } })
+        .resolves({
           entries: [],
           limit: 100,
           order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
           total_count: 0,
-        }))
-        .withArgs(grault.id).returns(Promise.resolve({
-          entries: [],
-          limit: 100,
-          order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
-          total_count: 0,
-        }));
-      sinon.stub(client.folders, 'create')
-        .withArgs(corge.parent && corge.parent.id || '', corge.name || '').returns(Promise.resolve(corge))
-        .withArgs(grault.parent && grault.parent.id || '', grault.name || '').returns(Promise.resolve(grault))
-        .withArgs(garply.parent && garply.parent.id || '', garply.name || '').returns(Promise.resolve(garply))
-        .withArgs(quux.parent && quux.parent.id || '', quux.name || '').returns(Promise.resolve(quux));
+        });
+      stub.post
+        .withArgs('/folders', { body: { name: corge.name, parent: { id: corge.parent && corge.parent.id } } })
+        .resolves(corge)
+        .withArgs('/folders', { body: { name: quux.name, parent: { id: quux.parent && quux.parent.id } } })
+        .resolves(quux)
+        .withArgs('/folders', { body: { name: grault.name, parent: { id: grault.parent && grault.parent.id } } })
+        .resolves(grault)
+        .withArgs('/folders', { body: { name: garply.name, parent: { id: garply.parent && garply.parent.id } } })
+        .resolves(garply);
       const finder = await BoxFinder.create(client, '0');
       expect(await finder.createFolderUnlessItExists('corge')).to.have.property('id', corge.id);
       expect(await finder.createFolderUnlessItExists('grault/garply')).to.have.property('id', garply.id);
@@ -369,83 +361,32 @@ describe('BoxFinder', () => {
 
   describe('findFileByPath', () => {
     it('should return the file if the file exists', async () => {
-      const client = BoxSDK.getBasicClient('');
-      sinon.stub(client, 'get')
-        .withArgs(url.resolve('/folders/', root.id), { headers: { 'IF-NONE-MATCH': root.etag }, qs: undefined })
-        .rejects(new NotModifiedError())
-        .withArgs(url.resolve('/folders/', bar.id), { headers: { 'IF-NONE-MATCH': bar.etag }, qs: undefined })
-        .rejects(new NotModifiedError())
-        .withArgs(url.resolve('/files/', foo.id), { headers: { 'IF-NONE-MATCH': foo.etag }, qs: undefined })
-        .rejects(new NotModifiedError())
-        .withArgs(url.resolve('/files/', waldo.id), { headers: { 'IF-NONE-MATCH': waldo.etag }, qs: undefined })
-        .rejects(new NotModifiedError());
-      sinon.stub(client.folders, 'get')
-        .withArgs(root.id).returns(Promise.resolve(root))
-        .withArgs(bar.id).returns(Promise.resolve(bar));
-      sinon.stub(client.files, 'get')
-        .withArgs(foo.id).returns(Promise.resolve(foo))
-        .withArgs(waldo.id).returns(Promise.resolve(waldo));
-      sinon.stub(client.folders, 'getItems')
-        .withArgs(root.id).returns(Promise.resolve({
-          entries: [foo, bar, baz],
-          limit: 100,
-          order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
-          total_count: 3,
-        }))
-        .withArgs(bar.id).returns(Promise.resolve({
-          entries: [qux, waldo],
-          limit: 100,
-          order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
-          total_count: 2,
-        }))
-        .withArgs(qux.id).returns(Promise.resolve({
-          entries: [],
-          limit: 100,
-          order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
-          total_count: 0,
-        }));
       const finder = await BoxFinder.create(client, '0');
-      const file = await finder.findFileByPath('foo');
-      expect(file).to.have.property('id', foo.id);
+      expect(await finder.findFileByPath('foo')).to.have.property('id', foo.id);
       expect(await finder.findFileByPath('bar/waldo')).to.have.property('id', waldo.id);
     });
 
     it('should return an undefined if the file does not exists', async () => {
-      const client = BoxSDK.getBasicClient('');
-      sinon.stub(client, 'get')
-        .withArgs(url.resolve('/folders/', root.id), { headers: { 'IF-NONE-MATCH': root.etag }, qs: undefined })
-        .rejects(new NotModifiedError())
-        .withArgs(url.resolve('/folders/', bar.id), { headers: { 'IF-NONE-MATCH': bar.etag }, qs: undefined })
-        .rejects(new NotModifiedError())
-        .withArgs(url.resolve('/folders/', qux.id), { headers: { 'IF-NONE-MATCH': qux.etag }, qs: undefined })
-        .rejects(new NotModifiedError());
-      sinon.stub(client.folders, 'get')
-        .withArgs(root.id).returns(Promise.resolve(root))
-        .withArgs(bar.id).returns(Promise.resolve(bar))
-        .withArgs(qux.id).returns(Promise.resolve(qux));
-      sinon.stub(client.folders, 'getItems')
-        .withArgs(root.id).returns(Promise.resolve({
-          entries: [foo, bar, baz],
-          limit: 100,
-          order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
-          total_count: 3,
-        }))
-        .withArgs(bar.id).returns(Promise.resolve({
-          entries: [qux, waldo],
-          limit: 100,
-          order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
-          total_count: 2,
-        }))
-        .withArgs(qux.id).returns(Promise.resolve({
-          entries: [],
-          limit: 100,
-          order: [{ by: 'type', direction: 'ASC' }, { by: 'name', direction: 'ASC' }],
-          total_count: 0,
-        }));
       const finder = await BoxFinder.create(client, '0');
       expect(await finder.findFileByPath('fred')).to.be.an('undefined');
       expect(await finder.findFileByPath('bar/plugh')).to.be.an('undefined');
       expect(await finder.findFileByPath('bar/qux/xyzzy')).to.be.an('undefined');
+    });
+  });
+
+  describe('findFolderByPath', () => {
+    it('should return the folder if the foler exists', async () => {
+      const finder = await BoxFinder.create(client, '0');
+      expect(await finder.findFolderByPath('bar')).to.have.property('id', bar.id);
+      expect(await finder.findFolderByPath('bar/qux')).to.have.property('id', qux.id);
+    });
+
+    it('should return an undefined if the folder does not exists', async () => {
+      const finder = await BoxFinder.create(client, '0');
+      expect(await finder.findFolderByPath('fred')).to.be.an('undefined');
+      expect(await finder.findFolderByPath('foo')).to.be.an('undefined');
+      expect(await finder.findFolderByPath('bar/plugh')).to.be.an('undefined');
+      expect(await finder.findFolderByPath('bar/qux/xyzzy')).to.be.an('undefined');
     });
   });
 });
