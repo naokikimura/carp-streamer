@@ -389,4 +389,34 @@ describe('BoxFinder', () => {
       expect(await finder.findFolderByPath('bar/qux/xyzzy')).to.be.an('undefined');
     });
   });
+
+  describe('uploadFile', () => {
+    it('should return a new file', async () => {
+      const fred: box.File = {
+        etag: '0',
+        file_version: {
+          id: '9999999995',
+          sha1: 'e91ba0972b9055187fa2efa8b5c156f487a8293a',
+          type: 'file_version',
+        },
+        id: '9999999995',
+        name: 'fred',
+        parent: miniRoot,
+        sha1: 'e91ba0972b9055187fa2efa8b5c156f487a8293a',
+        type: 'file',
+      };
+      stub.upload
+        .withArgs('/files/content', null, {
+          attributes: JSON.stringify({ name: fred.name, parent: { id: fred.parent && fred.parent.id } }),
+          content: {
+            options: { filename: 'unused' },
+            value: 'hello, world!',
+          },
+        })
+        .resolves({ entries: [fred], total_count: 1 });
+      const finder = await BoxFinder.create(client, '0');
+      expect(await finder.uploadFile('fred', 'hello, world!'))
+        .to.have.nested.property('.entries[0].id', fred.id);
+    });
+  });
 });
