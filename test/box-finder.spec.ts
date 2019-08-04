@@ -3,6 +3,7 @@
 import BoxSDK, * as box from 'box-node-sdk';
 import BoxClient from 'box-node-sdk/lib/box-client';
 import { expect } from 'chai';
+import { Stats } from 'fs';
 import sinon from 'sinon';
 import url from 'url';
 import BoxFinder from '../src/box-finder';
@@ -391,32 +392,144 @@ describe('BoxFinder', () => {
   });
 
   describe('uploadFile', () => {
-    it('should return a new file', async () => {
-      const fred: box.File = {
-        etag: '0',
-        file_version: {
-          id: '9999999995',
-          sha1: 'e91ba0972b9055187fa2efa8b5c156f487a8293a',
-          type: 'file_version',
-        },
+    const content = 'hello, world!';
+    const contentCreatedAt = '2019-08-04T11:06:08Z';
+    const contentModifiedAt = '2019-08-04T11:06:10Z';
+    const stats: Stats = new class extends Stats {
+      public birthtime = new Date(contentCreatedAt);
+      public mtime = new Date(contentModifiedAt);
+      public size = content.length;
+    }();
+    const file: box.File = {
+      content_created_at: contentCreatedAt,
+      content_modified_at: contentModifiedAt,
+      etag: '0',
+      file_version: {
         id: '9999999995',
-        name: 'fred',
-        parent: miniRoot,
         sha1: 'e91ba0972b9055187fa2efa8b5c156f487a8293a',
-        type: 'file',
-      };
+        type: 'file_version',
+      },
+      id: '9999999995',
+      name: 'fred',
+      parent: miniRoot,
+      sha1: 'e91ba0972b9055187fa2efa8b5c156f487a8293a',
+      type: 'file',
+    };
+
+    it('should return a new file', async () => {
       stub.upload
         .withArgs('/files/content', null, {
-          attributes: JSON.stringify({ name: fred.name, parent: { id: fred.parent && fred.parent.id } }),
+          attributes: JSON.stringify({ name: file.name, parent: { id: file.parent && file.parent.id } }),
           content: {
             options: { filename: 'unused' },
-            value: 'hello, world!',
+            value: content,
           },
         })
-        .resolves({ entries: [fred], total_count: 1 });
+        .resolves({ entries: [file], total_count: 1 });
       const finder = await BoxFinder.create(client, '0');
-      expect(await finder.uploadFile('fred', 'hello, world!'))
-        .to.have.nested.property('.entries[0].id', fred.id);
+      expect(await finder.uploadFile('fred', content))
+        .to.have.nested.property('.entries[0].id', file.id);
+    });
+
+    it('should return a file with a timestamp if the content has a timestamp', async () => {
+      const meta = {
+        name: file.name,
+        parent: { id: file.parent && file.parent.id },
+      };
+      const attributes = Object.assign(meta, {
+        content_created_at: contentCreatedAt,
+        content_modified_at: contentModifiedAt,
+      });
+      stub.upload
+        .withArgs('/files/content', null, {
+          attributes: JSON.stringify(attributes),
+          content: {
+            options: { filename: 'unused' },
+            value: content,
+          },
+        })
+        .resolves({ entries: [file], total_count: 1 });
+      const finder = await BoxFinder.create(client, '0');
+      const items = await finder.uploadFile('fred', content, stats);
+      expect(items).to.have.property('total_count', 1);
+      const item = items.entries[0];
+      expect(item).to.have.property('id', file.id);
+      expect(item).to.have.property('content_created_at', file.content_created_at);
+      expect(item).to.have.property('content_modified_at', file.content_modified_at);
+    });
+  });
+
+  describe('uploadNewFileVersion', () => {
+    const fileVersion: box.MiniFileVersion = {
+      id: '9999999995',
+      sha1: 'e91ba0972b9055187fa2efa8b5c156f487a8293a',
+      type: 'file_version',
+    };
+    const file: box.MiniFile = {
+      etag: '0',
+      file_version: fileVersion,
+      id: fileVersion.id,
+      name: 'fred',
+      sha1: fileVersion.sha1,
+      type: 'file',
+    };
+    const newContent = 'hello, new world!';
+    const newContentModifiedAt = '2019-08-04T11:06:10Z';
+    const newStats: Stats = new class extends Stats {
+      public mtime = new Date(newContentModifiedAt);
+      public size = newContent.length;
+    }();
+    const newFileVersion: box.MiniFileVersion = {
+      id: file.id,
+      sha1: '4c4b86cfba0bf3f77adaa53c72789636343f33e0',
+      type: 'file_version',
+    };
+    const newFile: box.File = {
+      content_modified_at: newContentModifiedAt,
+      etag: '1',
+      file_version: newFileVersion,
+      id: newFileVersion.id,
+      parent: miniRoot,
+      sha1: newFileVersion.sha1,
+      type: 'file',
+    };
+
+    it('should return a new version of the file', async () => {
+      stub.upload
+        .withArgs(`/files/${file.id}/content`, null, {
+          attributes: JSON.stringify({}),
+          content: {
+            options: { filename: 'unused' },
+            value: newContent,
+          },
+        })
+        .resolves({ entries: [newFile], total_count: 1 });
+      const finder = await BoxFinder.create(client, '0');
+      const items = await finder.uploadNewFileVersion(file, newContent);
+      expect(items).to.have.property('total_count', 1);
+      const item = items.entries[0];
+      expect(item).to.have.property('file_version', newFile.file_version);
+    });
+
+    it('should return a file with a timestamp if the content has a timestamp', async () => {
+      const attributes = {
+        content_modified_at: newContentModifiedAt,
+      };
+      stub.upload
+        .withArgs(`/files/${file.id}/content`, null, {
+          attributes: JSON.stringify(attributes),
+          content: {
+            options: { filename: 'unused' },
+            value: newContent,
+          },
+        })
+        .resolves({ entries: [newFile], total_count: 1 });
+      const finder = await BoxFinder.create(client, '0');
+      const items = await finder.uploadNewFileVersion(file, newContent, newStats);
+      expect(items).to.have.property('total_count', 1);
+      const item = items.entries[0];
+      expect(item).to.have.property('file_version', newFile.file_version);
+      expect(item).to.have.property('content_modified_at', newFile.content_modified_at);
     });
   });
 });
