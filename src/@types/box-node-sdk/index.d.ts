@@ -180,6 +180,7 @@ declare module 'box-node-sdk/lib/box-client' {
     public asSelf(): void;
     public asUser(userId: string): void;
     public get<T>(path: string, params: any, calback?: (err: any, result: T) => void): Promise<T>;
+    public post<T>(path: string, params: any, calback?: (err: any, result: T) => void): Promise<T>;
     public setCustomHeader(header: string, value: any): void;
     public wrapWithDefaultHandler<U extends any[], T>(method: (...args: U) => T): (...args: U) => T;
   }
