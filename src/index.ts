@@ -67,7 +67,7 @@ const spinner = ora({
       max: Number(args['cache-max-size']),
       maxAge: Number(args['cache-max-age']),
     };
-    const synchronizer = new Synchronizer(appConfig, args.token, args['as-user'], concurrency, cacheConfig);
+    const synchronizer = await Synchronizer.create(appConfig, args.token, args['as-user'], destination, cacheConfig, concurrency);
     synchronizer
       .on(SyncEventType.ENTER, absolutePath => {
         progressBar.total = progressBar.total + 1;
@@ -113,7 +113,7 @@ const spinner = ora({
       });
     for await (const source of sources) {
       const rootPath = path.resolve(process.cwd(), source);
-      await synchronizer.synchronize(rootPath, destination, excludes, pretend);
+      await synchronizer.synchronize(rootPath, excludes, pretend);
     }
     if (needProgress) { console.error('Successful!'); }
     progressBar.terminate();
