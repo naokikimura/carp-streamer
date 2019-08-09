@@ -1,10 +1,11 @@
-import async from 'async';
+import async, { find } from 'async';
 import * as box from 'box-node-sdk';
 import BoxClient from 'box-node-sdk/lib/box-client';
 import { AppConfig } from 'box-node-sdk/lib/box-node-sdk';
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import util from 'util';
 import { name as packageName } from '../package.json';
@@ -31,6 +32,7 @@ export class Synchronizer extends EventEmitter {
       : { kind: 'AppAuth', type: 'enterprise', configurator };
     const clietBuilder = new BoxClientBuilder(appConfig, clientConfig);
     const finder = await BoxFinder.create(clietBuilder.build(), destination, cacheConfig);
+    finder.loadCache(path.join(os.tmpdir(), 'box-finder.cache.json'));
     return new Synchronizer(finder, concurrency);
   }
 
@@ -52,7 +54,7 @@ export class Synchronizer extends EventEmitter {
       this.emit(SyncEventType.ENTER, source);
       this.q.push({ entry, rootPath: dir, finder: this.finder, pretend, excludes }, callback);
       this.emit(SyncEventType.ENTERED, 1);
-      return this.q.drain();
+      return this.q.drain().then(() => this.finder.saveCache(path.join(os.tmpdir(), 'box-finder.cache.json')));
     }
     let count = 0;
     for await (const entry of listDirectoryEntriesRecursively(source)) {
@@ -61,7 +63,7 @@ export class Synchronizer extends EventEmitter {
       count++;
     }
     this.emit(SyncEventType.ENTERED, count);
-    return this.q.drain();
+    return this.q.drain().then(() => this.finder.saveCache(path.join(os.tmpdir(), 'box-finder.cache.json')));
   }
 }
 
