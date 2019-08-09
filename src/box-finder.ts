@@ -5,7 +5,7 @@ import { UploadPart } from 'box-node-sdk/lib/chunked-uploader';
 import Files from 'box-node-sdk/lib/managers/files';
 import Folders from 'box-node-sdk/lib/managers/folders';
 import { ResponseError } from 'box-node-sdk/lib/util/errors';
-import { ReadStream, Stats } from 'fs';
+import fs from 'fs';
 import _ from 'lodash';
 import LRUCache from 'lru-cache';
 import sizeof from 'object-sizeof';
@@ -108,7 +108,7 @@ export default class BoxFinder {
     return BoxFinder.findFolderByPath(dirs, this);
   }
 
-  public async uploadFile(name: string, content: string | Buffer | ReadStream, stats?: Stats, folder?: box.MiniFolder) {
+  public async uploadFile(name: string, content: string | Buffer | fs.ReadStream, stats?: fs.Stats, folder?: box.MiniFolder) {
     const folderId = (folder || this.current).id;
     const options = {
       content_created_at: stats && toRFC3339String(stats.birthtime),
@@ -153,7 +153,7 @@ export default class BoxFinder {
     }
   }
 
-  public async uploadNewFileVersion(file: box.MiniFile, content: string | Buffer | ReadStream, stats?: Stats) {
+  public async uploadNewFileVersion(file: box.MiniFile, content: string | Buffer | fs.ReadStream, stats?: fs.Stats) {
     if (file.name === undefined) {
       return assert.fail('file.name is required.');
     }
@@ -183,6 +183,18 @@ export default class BoxFinder {
     } else {
       return this.files.uploadNewFileVersion(file.id, content, options).then(cacheItems(this.cache));
     }
+  }
+
+  public async loadCache(file: string | Buffer | url.URL | fs.promises.FileHandle) {
+    const buffer = await fs.promises.readFile(file);
+    return this.cache.load(JSON.parse(buffer.toString('UTF-8')));
+  }
+
+  public async saveCache(file: string | Buffer | url.URL | fs.promises.FileHandle) {
+    const entries = this.cache.dump();
+    debug('cache entries: %o', entries);
+    const json = JSON.stringify(entries, null, 0);
+    return fs.promises.writeFile(file, json, { encoding: 'UTF-8' });
   }
 
   private new(folder: box.MiniFolder, cache = this.cache, disableCachedResponsesValidation = this.disableCachedResponsesValidation) {
