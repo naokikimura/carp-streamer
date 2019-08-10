@@ -1,4 +1,4 @@
-import async, { find } from 'async';
+import async from 'async';
 import * as box from 'box-node-sdk';
 import BoxClient from 'box-node-sdk/lib/box-client';
 import { AppConfig } from 'box-node-sdk/lib/box-node-sdk';
@@ -32,15 +32,33 @@ export class Synchronizer extends EventEmitter {
       : { kind: 'AppAuth', type: 'enterprise', configurator };
     const clietBuilder = new BoxClientBuilder(appConfig, clientConfig);
     const finder = await BoxFinder.create(clietBuilder.build(), destination, cacheConfig);
-    finder.loadCache(path.join(os.tmpdir(), 'box-finder.cache.json'));
     return new Synchronizer(finder, concurrency);
   }
 
+  private boxFinderCacheFile: string;
   private q: async.AsyncQueue<Task>;
 
   private constructor(private finder: BoxFinder, concurrency: number = 0) {
     super();
+    this.boxFinderCacheFile = path.join(os.tmpdir(), 'box-finder.cache.json');
+    debug('box-finder cache file: %s', this.boxFinderCacheFile);
     this.q = async.queue<Task, SyncResult, Error>(worker, concurrency);
+  }
+
+  public async begin() {
+    try {
+      await this.finder.loadCache(this.boxFinderCacheFile);
+    } catch (error) {
+      debug('Warning! The BoxFinder cache could not be loaded. (%s)', error);
+    }
+  }
+
+  public async end() {
+    try {
+      await this.finder.saveCache(this.boxFinderCacheFile);
+    } catch (error) {
+      debug('Warning! The BoxFinder cache could not be saved. (%s)', error);
+    }
   }
 
   public async synchronize(source: string, excludes: string[] = [], pretend = false) {
@@ -54,7 +72,7 @@ export class Synchronizer extends EventEmitter {
       this.emit(SyncEventType.ENTER, source);
       this.q.push({ entry, rootPath: dir, finder: this.finder, pretend, excludes }, callback);
       this.emit(SyncEventType.ENTERED, 1);
-      return this.q.drain().then(() => this.finder.saveCache(path.join(os.tmpdir(), 'box-finder.cache.json')));
+      return this.q.drain();
     }
     let count = 0;
     for await (const entry of listDirectoryEntriesRecursively(source)) {
@@ -63,7 +81,7 @@ export class Synchronizer extends EventEmitter {
       count++;
     }
     this.emit(SyncEventType.ENTERED, count);
-    return this.q.drain().then(() => this.finder.saveCache(path.join(os.tmpdir(), 'box-finder.cache.json')));
+    return this.q.drain();
   }
 }
 

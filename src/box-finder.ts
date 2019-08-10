@@ -187,12 +187,14 @@ export default class BoxFinder {
 
   public async loadCache(file: string | Buffer | url.URL | fs.promises.FileHandle) {
     const buffer = await fs.promises.readFile(file);
-    return this.cache.load(JSON.parse(buffer.toString('UTF-8')));
+    const entries = JSON.parse(buffer.toString('UTF-8'));
+    debug('Loading %s entries into the cache.', entries.length);
+    return this.cache.load(entries);
   }
 
   public async saveCache(file: string | Buffer | url.URL | fs.promises.FileHandle) {
     const entries = this.cache.dump();
-    debug('cache entries: %o', entries);
+    debug('Saving %s entries from the cache.', entries.length);
     const json = JSON.stringify(entries, null, 0);
     return fs.promises.writeFile(file, json, { encoding: 'UTF-8' });
   }

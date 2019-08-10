@@ -111,10 +111,12 @@ const spinner = ora({
         }
         progressBar.tick();
       });
+    await synchronizer.begin();
     for await (const source of sources) {
       const rootPath = path.resolve(process.cwd(), source);
       await synchronizer.synchronize(rootPath, excludes, pretend);
     }
+    await synchronizer.end();
     if (needProgress) { console.error('Successful!'); }
     progressBar.terminate();
     spinner.info('Successful!');
