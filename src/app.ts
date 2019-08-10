@@ -5,12 +5,14 @@ import { AppConfig } from 'box-node-sdk/lib/box-node-sdk';
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import util from 'util';
-import { name as packageName } from '../package.json';
 import BoxClientBuilder, { BoxClientConfig } from './box-client-builder';
 import BoxFinder, { CacheConfig } from './box-finder';
 
+// tslint:disable-next-line: no-var-requires
+const { name: packageName } = require('../package.json');
 const debug = util.debuglog(`${packageName}:app`);
 
 const readdirAsync = util.promisify(fs.readdir);
@@ -23,40 +25,60 @@ export enum SyncEventType {
 }
 
 export class Synchronizer extends EventEmitter {
-  private client: BoxClient;
-  private q: async.AsyncQueue<Task>;
-  private cacheConfig: CacheConfig;
-
-  constructor(appConfig?: AppConfig, accessToken?: string, options?: { asUser: string }, concurrency: number = 0, cacheConfig: CacheConfig = {}) {
-    super();
+  public static async create(appConfig?: AppConfig, accessToken?: string, options?: { asUser: string }, destination = '0', cacheConfig: CacheConfig = {}, temporaryDirectory = os.tmpdir(), concurrency: number = 0) {
     const configurator = options && options.asUser
       ? ((client: BoxClient) => client.asUser(options.asUser)) : undefined;
     const clientConfig: BoxClientConfig = accessToken
       ? { kind: 'Basic', accessToken, configurator }
       : { kind: 'AppAuth', type: 'enterprise', configurator };
-    this.client = new BoxClientBuilder(appConfig, clientConfig).build();
-    this.q = async.queue<Task, SyncResult, Error>(worker, concurrency);
-    this.cacheConfig = cacheConfig;
+    const clietBuilder = new BoxClientBuilder(appConfig, clientConfig);
+    const finder = await BoxFinder.create(clietBuilder.build(), destination, cacheConfig);
+    return new Synchronizer(finder, temporaryDirectory, concurrency);
   }
 
-  public async synchronize(source: string, destination = '0', excludes: string[] = [], pretend = false) {
+  private static BOX_FINDER_CACHE_FILE_NAME = 'box-finder.cache.json';
+  private boxFinderCacheFile: string;
+  private q: async.AsyncQueue<Task>;
+
+  private constructor(private finder: BoxFinder, temporaryDirectory: string, concurrency: number = 0) {
+    super();
+    this.boxFinderCacheFile = path.join(temporaryDirectory, Synchronizer.BOX_FINDER_CACHE_FILE_NAME);
+    this.q = async.queue<Task, SyncResult, Error>(worker, concurrency);
+  }
+
+  public async begin() {
+    try {
+      await this.finder.loadCache(this.boxFinderCacheFile);
+    } catch (error) {
+      debug('Warning! The BoxFinder cache could not be loaded. (%s)', error);
+    }
+  }
+
+  public async end() {
+    try {
+      await this.finder.saveCache(this.boxFinderCacheFile);
+    } catch (error) {
+      debug('Warning! The BoxFinder cache could not be saved. (%s)', error);
+    }
+  }
+
+  public async synchronize(source: string, excludes: string[] = [], pretend = false) {
     const callback: async.AsyncResultCallback<SyncResult> = (error, result = { status: SyncResultStatus.UNKNOWN }) => {
       this.emit(SyncEventType.SYNCHRONIZE, error, result.absolutePath, result.status);
     };
-    const finder = await BoxFinder.create(this.client, destination, this.cacheConfig);
     const stats = await statAsync(source);
     if (!stats.isDirectory()) {
       const { dir, base } = path.parse(source);
       const entry = { path: source, dirent: createDirentFromStats(stats, base) };
       this.emit(SyncEventType.ENTER, source);
-      this.q.push({ entry, rootPath: dir, finder, pretend, excludes }, callback);
+      this.q.push({ entry, rootPath: dir, finder: this.finder, pretend, excludes }, callback);
       this.emit(SyncEventType.ENTERED, 1);
       return this.q.drain();
     }
     let count = 0;
     for await (const entry of listDirectoryEntriesRecursively(source)) {
       this.emit(SyncEventType.ENTER, entry.path);
-      this.q.push({ entry, rootPath: source, finder, pretend, excludes }, callback);
+      this.q.push({ entry, rootPath: source, finder: this.finder, pretend, excludes }, callback);
       count++;
     }
     this.emit(SyncEventType.ENTERED, count);

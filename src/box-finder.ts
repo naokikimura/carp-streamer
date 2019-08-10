@@ -5,17 +5,18 @@ import { UploadPart } from 'box-node-sdk/lib/chunked-uploader';
 import Files from 'box-node-sdk/lib/managers/files';
 import Folders from 'box-node-sdk/lib/managers/folders';
 import { ResponseError } from 'box-node-sdk/lib/util/errors';
-import { ReadStream, Stats } from 'fs';
+import fs from 'fs';
 import _ from 'lodash';
 import LRUCache from 'lru-cache';
 import sizeof from 'object-sizeof';
 import path from 'path';
 import url from 'url';
 import util from 'util';
-import { name as packageName } from '../package.json';
 import { INIT_RETRY_TIMES } from './config';
 import { sleep } from './util';
 
+// tslint:disable-next-line: no-var-requires
+const { name: packageName } = require('../package.json');
 const debug = util.debuglog(`${packageName}:box-finder`);
 
 const CHUNKED_UPLOAD_MINIMUM = 20_000_000;
@@ -108,7 +109,7 @@ export default class BoxFinder {
     return BoxFinder.findFolderByPath(dirs, this);
   }
 
-  public async uploadFile(name: string, content: string | Buffer | ReadStream, stats?: Stats, folder?: box.MiniFolder) {
+  public async uploadFile(name: string, content: string | Buffer | fs.ReadStream, stats?: fs.Stats, folder?: box.MiniFolder) {
     const folderId = (folder || this.current).id;
     const options = {
       content_created_at: stats && toRFC3339String(stats.birthtime),
@@ -153,7 +154,7 @@ export default class BoxFinder {
     }
   }
 
-  public async uploadNewFileVersion(file: box.MiniFile, content: string | Buffer | ReadStream, stats?: Stats) {
+  public async uploadNewFileVersion(file: box.MiniFile, content: string | Buffer | fs.ReadStream, stats?: fs.Stats) {
     if (file.name === undefined) {
       return assert.fail('file.name is required.');
     }
@@ -183,6 +184,23 @@ export default class BoxFinder {
     } else {
       return this.files.uploadNewFileVersion(file.id, content, options).then(cacheItems(this.cache));
     }
+  }
+
+  public async loadCache(file: string | Buffer | url.URL | fs.promises.FileHandle) {
+    debug('Load the cache from %s', file);
+    const buffer = await fs.promises.readFile(file);
+    const entries = JSON.parse(buffer.toString('UTF-8'));
+    debug('Loading %s entries into the cache.', entries.length);
+    await this.cache.load(entries);
+    debug('Loaded %s entries into the cache.', this.cache.keys().length);
+  }
+
+  public async saveCache(file: string | Buffer | url.URL | fs.promises.FileHandle) {
+    debug('Save the cache to %s', file);
+    const entries = this.cache.dump();
+    debug('Saving %s entries from the cache.', entries.length);
+    const json = JSON.stringify(entries, null, 0);
+    return fs.promises.writeFile(file, json, { encoding: 'UTF-8' });
   }
 
   private new(folder: box.MiniFolder, cache = this.cache, disableCachedResponsesValidation = this.disableCachedResponsesValidation) {

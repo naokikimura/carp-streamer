@@ -7,9 +7,10 @@ import path from 'path';
 import progress from 'progress';
 import { Writable } from 'stream';
 import util from 'util';
-import { name as packageName, version as packageVersion } from '../package.json';
 import { SyncEventType, Synchronizer, SyncResultStatus } from './app';
 
+// tslint:disable-next-line: no-var-requires
+const { name: packageName, version: packageVersion } = require('../package.json');
 const debug = util.debuglog(`${packageName}:index`);
 
 const argsOption = {
@@ -24,7 +25,7 @@ const argsOption = {
     'progress': false,
   },
   number: ['c', 'cache-max-size', 'cache-max-age'],
-  string: ['t', 'as-user', 'exclude'],
+  string: ['t', 'as-user', 'exclude', 'temporary-directory'],
 };
 const args = minimist(process.argv.slice(2), argsOption);
 if (args.version) {
@@ -67,7 +68,7 @@ const spinner = ora({
       max: Number(args['cache-max-size']),
       maxAge: Number(args['cache-max-age']),
     };
-    const synchronizer = new Synchronizer(appConfig, args.token, args['as-user'], concurrency, cacheConfig);
+    const synchronizer = await Synchronizer.create(appConfig, args.token, args['as-user'], destination, cacheConfig, args['temporary-directory'], concurrency);
     synchronizer
       .on(SyncEventType.ENTER, absolutePath => {
         progressBar.total = progressBar.total + 1;
@@ -111,10 +112,12 @@ const spinner = ora({
         }
         progressBar.tick();
       });
+    await synchronizer.begin();
     for await (const source of sources) {
       const rootPath = path.resolve(process.cwd(), source);
-      await synchronizer.synchronize(rootPath, destination, excludes, pretend);
+      await synchronizer.synchronize(rootPath, excludes, pretend);
     }
+    await synchronizer.end();
     if (needProgress) { console.error('Successful!'); }
     progressBar.terminate();
     spinner.info('Successful!');
