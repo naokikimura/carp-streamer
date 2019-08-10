@@ -24,7 +24,7 @@ const argsOption = {
     'progress': false,
   },
   number: ['c', 'cache-max-size', 'cache-max-age'],
-  string: ['t', 'as-user', 'exclude'],
+  string: ['t', 'as-user', 'exclude', 'temporary-directory'],
 };
 const args = minimist(process.argv.slice(2), argsOption);
 if (args.version) {
@@ -67,7 +67,7 @@ const spinner = ora({
       max: Number(args['cache-max-size']),
       maxAge: Number(args['cache-max-age']),
     };
-    const synchronizer = await Synchronizer.create(appConfig, args.token, args['as-user'], destination, cacheConfig, concurrency);
+    const synchronizer = await Synchronizer.create(appConfig, args.token, args['as-user'], destination, cacheConfig, args['temporary-directory'], concurrency);
     synchronizer
       .on(SyncEventType.ENTER, absolutePath => {
         progressBar.total = progressBar.total + 1;

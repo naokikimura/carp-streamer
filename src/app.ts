@@ -24,7 +24,7 @@ export enum SyncEventType {
 }
 
 export class Synchronizer extends EventEmitter {
-  public static async create(appConfig?: AppConfig, accessToken?: string, options?: { asUser: string }, destination = '0', cacheConfig: CacheConfig = {}, concurrency: number = 0) {
+  public static async create(appConfig?: AppConfig, accessToken?: string, options?: { asUser: string }, destination = '0', cacheConfig: CacheConfig = {}, temporaryDirectory = os.tmpdir(), concurrency: number = 0) {
     const configurator = options && options.asUser
       ? ((client: BoxClient) => client.asUser(options.asUser)) : undefined;
     const clientConfig: BoxClientConfig = accessToken
@@ -32,16 +32,16 @@ export class Synchronizer extends EventEmitter {
       : { kind: 'AppAuth', type: 'enterprise', configurator };
     const clietBuilder = new BoxClientBuilder(appConfig, clientConfig);
     const finder = await BoxFinder.create(clietBuilder.build(), destination, cacheConfig);
-    return new Synchronizer(finder, concurrency);
+    return new Synchronizer(finder, temporaryDirectory, concurrency);
   }
 
+  private static BOX_FINDER_CACHE_FILE_NAME = 'box-finder.cache.json';
   private boxFinderCacheFile: string;
   private q: async.AsyncQueue<Task>;
 
-  private constructor(private finder: BoxFinder, concurrency: number = 0) {
+  private constructor(private finder: BoxFinder, temporaryDirectory: string, concurrency: number = 0) {
     super();
-    this.boxFinderCacheFile = path.join(os.tmpdir(), 'box-finder.cache.json');
-    debug('box-finder cache file: %s', this.boxFinderCacheFile);
+    this.boxFinderCacheFile = path.join(temporaryDirectory, Synchronizer.BOX_FINDER_CACHE_FILE_NAME);
     this.q = async.queue<Task, SyncResult, Error>(worker, concurrency);
   }
 
