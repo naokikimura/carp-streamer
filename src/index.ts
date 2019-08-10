@@ -7,9 +7,10 @@ import path from 'path';
 import progress from 'progress';
 import { Writable } from 'stream';
 import util from 'util';
-import { name as packageName, version as packageVersion } from '../package.json';
 import { SyncEventType, Synchronizer, SyncResultStatus } from './app';
 
+// tslint:disable-next-line: no-var-requires
+const { name: packageName, version: packageVersion } = require('../package.json');
 const debug = util.debuglog(`${packageName}:index`);
 
 const argsOption = {

@@ -12,10 +12,11 @@ import sizeof from 'object-sizeof';
 import path from 'path';
 import url from 'url';
 import util from 'util';
-import { name as packageName } from '../package.json';
 import { INIT_RETRY_TIMES } from './config';
 import { sleep } from './util';
 
+// tslint:disable-next-line: no-var-requires
+const { name: packageName } = require('../package.json');
 const debug = util.debuglog(`${packageName}:box-finder`);
 
 const CHUNKED_UPLOAD_MINIMUM = 20_000_000;
