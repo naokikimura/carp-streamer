@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import BoxClient from 'box-node-sdk/lib/box-client';
 import fs from 'fs';
 import minimist from 'minimist';
 import ora from 'ora';
@@ -8,6 +9,8 @@ import progress from 'progress';
 import { Writable } from 'stream';
 import util from 'util';
 import { SyncEventType, Synchronizer, SyncResultStatus } from './app';
+import BoxClientBuilder, { BoxClientConfig } from './box-client-builder';
+import { CacheConfig } from './box-finder';
 
 // tslint:disable-next-line: no-var-requires
 const { name: packageName, version: packageVersion } = require('../package.json');
@@ -62,13 +65,28 @@ const spinner = ora({
 (async () => {
   try {
     progressBar.total = 0;
-    const appConfig = process.env.BOX_APP_CONFIG && JSON.parse(fs.readFileSync(process.env.BOX_APP_CONFIG).toString());
-    const cacheConfig = {
+    const cacheConfig: CacheConfig = {
       disableCachedResponsesValidation: Boolean(args['disable-cached-responses-validation']),
-      max: Number(args['cache-max-size']),
-      maxAge: Number(args['cache-max-age']),
+      options: {
+        max: Number(args['cache-max-size']),
+        maxAge: Number(args['cache-max-age']),
+        }
     };
-    const synchronizer = await Synchronizer.create(appConfig, args.token, args['as-user'], destination, cacheConfig, args['temporary-directory'], concurrency);
+    const configurator = args['as-user'] ? ((client: BoxClient) => client.asUser(args['as-user'])) : undefined;
+    const clients: BoxClient[] = [];
+    if (args.token) {
+      const clientConfig: BoxClientConfig = { kind: 'Basic', accessToken: args.token, configurator };
+      clients.push(new BoxClientBuilder(undefined, clientConfig).build());
+    } else {
+      clients.push(...await Promise.all((process.env.BOX_APP_CONFIG || '').split(path.delimiter).map(async file => {
+        debug('Load the Box App config %s', file);
+        const appConfig = JSON.parse((await fs.promises.readFile(file)).toString('UTF-8'));
+        const clientConfig: BoxClientConfig = { kind: 'AppAuth', type: 'enterprise', configurator };
+        return new BoxClientBuilder(appConfig, clientConfig).build();
+      })));
+    }
+    const synchronizer
+      = await Synchronizer.create(clients, destination, cacheConfig, args['temporary-directory'], concurrency);
     synchronizer
       .on(SyncEventType.ENTER, absolutePath => {
         progressBar.total = progressBar.total + 1;

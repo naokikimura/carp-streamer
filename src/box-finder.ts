@@ -35,25 +35,30 @@ const isMiniFile = (item: box.Item): item is box.MiniFile => item.type === 'file
 const isFolder = (item: box.MiniFolder): item is box.Folder => (item as box.Folder).size !== undefined;
 const isMiniFolder = (item: box.Item): item is box.MiniFolder => item.type === 'folder';
 
-export interface CacheConfig {
+export interface CacheOptions {
   max?: number;
   maxAge?: number;
+}
+
+export interface CacheConfig {
+  options?: CacheOptions;
   disableCachedResponsesValidation?: boolean;
 }
 
 export default class BoxFinder {
-  public static async create(client: BoxClient, folderId = '0', cacheConfig: CacheConfig = { max: 100_000_000 }) {
-    const folders = proxyToTrapTooManyRequests(client.folders);
-    const current = await folders.get(folderId);
+  public static createCache(options: CacheOptions) {
     const cacheOptions: LRUCache.Options<string, box.Item[]> = {
       length: sizeof,
-      max: cacheConfig.max,
-      maxAge: cacheConfig.maxAge,
+      max: options.max || 100_000_000,
+      maxAge: options.maxAge,
       updateAgeOnGet: true
     };
-    const cache = new LRUCache(cacheOptions);
-    const disableCachedResponsesValidation = Boolean(cacheConfig.disableCachedResponsesValidation);
-    return BoxFinder.new(client, current, cache, disableCachedResponsesValidation);
+    return new LRUCache(cacheOptions);
+  }
+
+  public static async create(client: BoxClient, folderId = '0', cache?: LRUCache<string, box.Item[]>, disableCachedResponsesValidation?: boolean) {
+    const current = await proxyToTrapTooManyRequests(client.folders).get(folderId);
+    return BoxFinder.new(client, current, cache || BoxFinder.createCache({}), Boolean(disableCachedResponsesValidation));
   }
 
   private static new(client: BoxClient, folder: box.MiniFolder, cache: LRUCache<string, box.Item[]>, disableCachedResponsesValidation: boolean) {
@@ -190,23 +195,6 @@ export default class BoxFinder {
     }
   }
 
-  public async loadCache(file: string | Buffer | url.URL | fs.promises.FileHandle) {
-    debug('Load the cache from %s', file);
-    const buffer = await fs.promises.readFile(file);
-    const entries = JSON.parse(buffer.toString('UTF-8'));
-    debug('Loading %s entries into the cache.', entries.length);
-    await this.cache.load(entries);
-    debug('Loaded %s entries into the cache.', this.cache.keys().length);
-  }
-
-  public async saveCache(file: string | Buffer | url.URL | fs.promises.FileHandle) {
-    debug('Save the cache to %s', file);
-    const entries = this.cache.dump();
-    debug('Saving %s entries from the cache.', entries.length);
-    const json = JSON.stringify(entries, null, 0);
-    return fs.promises.writeFile(file, json, { encoding: 'UTF-8' });
-  }
-
   private new(folder: box.MiniFolder, cache = this.cache, disableCachedResponsesValidation = this.disableCachedResponsesValidation) {
     return BoxFinder.new(this.client, folder, cache, disableCachedResponsesValidation);
   }
@@ -285,7 +273,11 @@ const cacheItems = (cache: LRUCache<string, box.Item[]>) => (newItems: box.Items
 };
 
 const cacheItem = <T extends box.File | box.Folder>(cache: LRUCache<string, box.Item[]>) => (newItem: T) => {
-  debug('new %s: %o', isMiniFile(newItem) ? 'file' : isMiniFolder(newItem) ? 'folder' : 'item', newItem);
+  const stringify = (item: T) => {
+    const entries = newItem.path_collection ? newItem.path_collection.entries : [];
+    return entries.concat(newItem).map(entry => entry.name).join('/');
+  };
+  debug('Cache %s %s.', stringify(newItem), newItem.type);
   if (newItem.parent === undefined || newItem.parent === null) {
     return assert.fail('folder or file parent is required.');
   }
