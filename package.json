@@ -1,6 +1,6 @@
 {
   "name": "carp-streamer",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "carp-streamer is backup tool for files on local computer using Box Platform API.",
   "bin": "dist/index.js",
   "scripts": {
