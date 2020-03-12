@@ -50,7 +50,7 @@
     "box-node-sdk": "^1.29.0",
     "lodash": "^4.17.14",
     "lru-cache": "^5.1.1",
-    "minimist": "^1.2.0",
+    "minimist": "^1.2.2",
     "object-sizeof": "^1.4.0",
     "ora": "^3.4.0",
     "progress": "^2.0.3"
