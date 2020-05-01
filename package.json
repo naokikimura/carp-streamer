@@ -4,9 +4,10 @@
   "description": "carp-streamer is backup tool for files on local computer using Box Platform API.",
   "bin": "dist/index.js",
   "scripts": {
-    "prepare": "tsc",
+    "prepare": "npm run snyk-protect && tsc",
     "test": "nyc mocha",
-    "start": "node ./dist/index.js"
+    "start": "node ./dist/index.js",
+    "snyk-protect": "snyk protect"
   },
   "repository": {
     "type": "git",
@@ -53,10 +54,12 @@
     "minimist": "^1.2.0",
     "object-sizeof": "^1.4.0",
     "ora": "^3.4.0",
-    "progress": "^2.0.3"
+    "progress": "^2.0.3",
+    "snyk": "^1.316.1"
   },
   "engines": {
     "node": ">=10.10.0"
   },
-  "engineStrict": true
+  "engineStrict": true,
+  "snyk": true
 }
