@@ -46,7 +46,7 @@
     "typescript": "^3.5.2"
   },
   "dependencies": {
-    "async": "^3.1.0",
+    "async": "^3.2.2",
     "box-node-sdk": "^1.29.0",
     "lodash": "^4.17.14",
     "lru-cache": "^5.1.1",
