@@ -47,12 +47,12 @@
   },
   "dependencies": {
     "async": "^3.1.0",
-    "box-node-sdk": "^1.29.0",
+    "box-node-sdk": "^3.3.0",
     "lodash": "^4.17.14",
     "lru-cache": "^5.1.1",
     "minimist": "^1.2.0",
     "object-sizeof": "^1.4.0",
-    "ora": "^3.4.0",
+    "ora": "^6.0.1",
     "progress": "^2.0.3"
   },
   "engines": {
